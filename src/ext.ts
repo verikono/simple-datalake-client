@@ -1,7 +1,6 @@
 import { AzureDatalakeClient } from './client';
 import { parseStream } from '@fast-csv/parse';
 import * as I from './types';
-import { parse } from 'dotenv/types';
 
 export class AzureDatalakeExt {
 

@@ -241,10 +241,10 @@ describe(`Datalake client tests`, function() {
 
         });
 
-        describe(`download`, () => {
+        describe(`get`, () => {
 
-            it(`Invokes download upon a valid URL`, async () => {
-                const result = await instance.download({url: validURL});
+            it(`Invokes get upon a valid URL`, async () => {
+                const result = await instance.get({url: validURL});
                 assert(typeof result === 'string' && result.length > 1, 'failed');
             });
         });

@@ -9,9 +9,11 @@ import {
 
 import * as fs from 'fs';
 import * as path from 'path';
+
 import { pipeline } from 'stream';
 
 import { AzureDatalakeExt } from './ext';
+import { AzureDatalakeStreams } from './streams';
 
 import * as I from './types';
 
@@ -20,6 +22,7 @@ export class AzureDatalakeClient {
     savePath='.';
     serviceClients:I.serviceClients = {};
     ext:AzureDatalakeExt = new AzureDatalakeExt({client: this});
+    streams:AzureDatalakeStreams = new AzureDatalakeStreams({client: this});
 
     constructor() {
 
@@ -27,7 +30,7 @@ export class AzureDatalakeClient {
     }
 
     /**
-     * Check file existence from a url
+     * Check file/blob existence from a url
      * 
      * @param props
      * @param props.url string the url of the file to check 
@@ -40,7 +43,7 @@ export class AzureDatalakeClient {
     }
 
     /**
-     * Stream a file from it's URL
+     * Stream a file/blob from it's URL, consuming it with callbacks a page at a time. 
      * 
      * @param props the argument object
      * @param props.onData Function invoked upon receipt of a chunk
@@ -75,6 +78,11 @@ export class AzureDatalakeClient {
         return true;
     }
 
+    /**
+     * Get a datalake file as a readable stream
+     * 
+     * @param props 
+     */
     async readableStream( props:I.readStream ):Promise<fs.ReadStream> {
 
         const {
@@ -89,12 +97,13 @@ export class AzureDatalakeClient {
         return downloadResponse.readableStreamBody as fs.ReadStream; 
     }
 
+
     /**
      * Download a file to memory/variable
      * 
      * @param props 
      */
-    download( props:I.downloadProps ):Promise<string> {
+    get( props:I.downloadProps ):Promise<string> {
 
         return new Promise( async (resolve, reject) => {
 
@@ -153,12 +162,12 @@ export class AzureDatalakeClient {
     }
 
     /**
-     * Upload a file to a specific URL
+     * Upload a data to a file/blob at a specific URL
      * 
      * @param props the argument object
      * @param props.url the target URL of this file upload.
      */
-    upload( props:I.uploadProps ) {
+    put( props:I.uploadProps ) {
 
         const {url} = props;
 
@@ -179,8 +188,11 @@ export class AzureDatalakeClient {
     }
 
     /**
+     * Get a Service Client for this Azure Datalake Service
      * 
      * @param props url string the url to gain a service client for.
+     * 
+     * @returns DataLakeServiceClient
      */
     getServiceClient( props:I.getServiceClientProps ):DataLakeServiceClient {
 
@@ -197,6 +209,15 @@ export class AzureDatalakeClient {
         return this.serviceClients[hostURL]        
     }
 
+    /**
+     * Get an AzureFileClient for the provided URL
+     * 
+     * @param props 
+     * @param props.url string the url of the file/blob
+     * 
+     * @returns DataLakeFileClient.
+     * 
+     */
     getFileClient( props ):DataLakeFileClient {
 
         const { url } = props;
@@ -205,11 +226,21 @@ export class AzureDatalakeClient {
 
     }
 
+    /**
+     * Get the Azure credential. Currently only gains it via environment variables.
+     * 
+     * @todo offer multiple authenication strategies.
+     * 
+     * @returns DefaultAzureCredential
+     */
     getCredential():DefaultAzureCredential{
 
         return new DefaultAzureCredential();
     }
 
+    /**
+     * Validates we have a valid environment/configuration to transact with the azure cloud. nb. does NOT verify the credentials are correct though.
+     */
     _isValidConfig() {
 
         try {
