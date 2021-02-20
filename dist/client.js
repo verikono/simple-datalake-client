@@ -34,10 +34,12 @@ const storage_file_datalake_1 = require("@azure/storage-file-datalake");
 const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
 const stream_1 = require("stream");
+const ext_1 = require("./ext");
 class AzureDatalakeClient {
     constructor() {
         this.savePath = '.';
         this.serviceClients = {};
+        this.ext = new ext_1.AzureDatalakeExt({ client: this });
         this._isValidConfig();
     }
     /**

@@ -62,8 +62,12 @@ export interface existsProps {
 export interface streamProps {
     url: string;
     onData: Function;
-    onEnd: Function;
+    onEnd?: Function;
     onError?: Function;
+}
+
+export interface readStream {
+    url: string;
 }
 
 export interface downloadProps {
@@ -77,4 +81,10 @@ export interface saveProps {
 
 export interface uploadProps {
     url: string;
+}
+
+export interface extReduceProps {
+    url: string;
+    reducer: Function; //the fuction processed on each row, returning a new value for the accumulator
+    accumulator?: any; //initial value, altered from every return of the reducer.
 }

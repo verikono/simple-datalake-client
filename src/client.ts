@@ -9,8 +9,9 @@ import {
 
 import * as fs from 'fs';
 import * as path from 'path';
-
 import { pipeline } from 'stream';
+
+import { AzureDatalakeExt } from './ext';
 
 import * as I from './types';
 
@@ -18,6 +19,7 @@ export class AzureDatalakeClient {
 
     savePath='.';
     serviceClients:I.serviceClients = {};
+    ext:AzureDatalakeExt = new AzureDatalakeExt({client: this});
 
     constructor() {
 
@@ -59,7 +61,7 @@ export class AzureDatalakeClient {
             return new Promise((resolve, reject) => {
                 readableStream.on('data', onData),
                 readableStream.on('end', _ => {
-                    onEnd();
+                    typeof onEnd ===  'function' ? onEnd() : null;
                     resolve(true);
                 });
                 readableStream.on('error', reject);
@@ -71,6 +73,20 @@ export class AzureDatalakeClient {
         const result = await streamToBuffer(downloadResponse.readableStreamBody);
 
         return true;
+    }
+
+    async readableStream( props:I.readStream ):Promise<fs.ReadStream> {
+
+        const {
+            url
+        } = props;
+
+        if(!await this.exists({url}))
+            throw `AzureDatalakeClient::readableStream received an invalid URL`;
+
+        const client = this.getFileClient({url});
+        const downloadResponse = await client.read();
+        return downloadResponse.readableStreamBody as fs.ReadStream; 
     }
 
     /**

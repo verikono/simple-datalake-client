@@ -22,6 +22,10 @@ import {
     AzureDatalakeClient
 } from '../src';
 
+import {
+    AzureDatalakeExt
+} from '../src/ext';
+
 describe(`Datalake client tests`, function() {
 
     let instance:AzureDatalakeClient;
@@ -269,6 +273,107 @@ describe(`Datalake client tests`, function() {
             });
 
 
+
+        });
+
+    });
+
+    describe(`Extensions Tests`, () => {
+
+        it(`Extendsions exist on instance`, () => {
+
+            assert(instance.ext instanceof AzureDatalakeExt, 'failed');
+        });
+
+        describe(`reduce`, () => {
+
+            it(`invokes reduce with a valid URL`, async () => {
+                
+                let cnt = 0;
+                const result:number = await instance.ext.reduce({url: validURL, accumulator: 0, reducer: (acc, data, i) => {
+                    cnt++;
+                    return acc+1;
+                }});
+                assert(cnt === result, 'failed');
+
+            });
+
+            it(`invokes reduce with an invalid URL`, async () => {
+
+                let receievedError = false;
+                try {
+                    await instance.ext.reduce({url: validURLNotExists, accumulator: 0, reducer: () => {}});
+                }
+                catch( err ) {
+                    receievedError = true;
+                }
+
+                assert(receievedError, 'failed - did not get the expected error');
+
+            })
+
+        });
+
+        describe(`map`, () => {
+
+            it(`invokes map with a valid URL`, async () => {
+
+                const result = await instance.ext.map({url: validURL, mapper: (data, i) => {
+                    return i;
+                }});
+            });
+
+        });
+
+        describe(`forEach`, () => {
+
+            it(`invokes forEach with the validURL`, async () => {
+
+                //we need the row nums
+                const count = await instance.ext.count({url: validURL});
+
+                let cnt = 0;
+                const result = await instance.ext.forEach({url: validURL, fn: (data, i) => {
+                    cnt++;
+                }});
+
+                assert(cnt === count, 'failed');
+
+            });
+
+            it(`invokes forEach with the invalidURL`, async () => {
+
+                let receievedError = false;
+                try {
+                    await instance.ext.forEach({url: validURLNotExists, fn: () => {}});
+                }
+                catch( err ) {
+                    receievedError = true;
+                }
+
+                assert(receievedError, 'failed');
+            });
+
+            it(`invokes forEach with a validURL , nonblocking`, async () => {
+
+                //we need the row nums
+                const count = await instance.ext.count({url: validURL});
+
+                let cnt = 0;
+                let invoked = false;
+                const result = await instance.ext.forEach({url: validURL, block: false, fn: (data, i) => {
+                    cnt++;
+                    invoked = true;
+                }});
+
+                let afterInvokeCount = cnt;
+                assert(afterInvokeCount !== count, 'failed');
+
+                await new Promise(r => setTimeout(e=> {
+                    assert(invoked, 'failed');
+                    r(true);
+                }, 0))
+            });
 
         });
 
