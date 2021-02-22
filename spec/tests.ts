@@ -31,6 +31,7 @@ describe(`Datalake client tests`, function() {
     let instance:AzureDatalakeClient;
     let validURL = `https://nusatradeadl.blob.core.windows.net/dev/working/BEVERAGE%20RTD/calendar_constraints.csv`;
     let validURLNotExists = `https://nusatradeadl.blob.core.windows.net/dev/working/BEVERAGE%20RTD/nofilehere.csv`;
+    let validURLGunzipped ='https://nusatradeadluat.blob.core.windows.net/simulation-service/scenario-results/SYSTEM/PIZZA-optimization-20201216-0/PIZZA/input/calendar_constraints.csv.gz'
 
     describe(`Setup`, () => {
 
@@ -310,7 +311,21 @@ describe(`Datalake client tests`, function() {
 
                 assert(receievedError, 'failed - did not get the expected error');
 
-            })
+            });
+
+            it(`invokes reducer with a valid GZIPPED URL`, async () => {
+
+                let cnt = 0;
+                const result = await instance.ext.reduce({
+                    url: validURLGunzipped,
+                    reducer: (acc, data) => {
+                        acc.push(data);
+                        return acc;
+                    },
+                    accumulator: []
+                });
+                console.log('---')
+            });
 
         });
 
@@ -374,6 +389,14 @@ describe(`Datalake client tests`, function() {
                     r(true);
                 }, 0))
             });
+
+            it(`invokes forEach with a valid Gzipped URL`, async () => {
+                
+                let cnt = 0;
+                const result = await instance.ext.forEach({url: validURLGunzipped, fn: (data, i) => {
+                    cnt++;
+                }});
+            })
 
         });
 

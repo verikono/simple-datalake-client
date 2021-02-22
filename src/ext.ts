@@ -1,6 +1,10 @@
 import { AzureDatalakeClient } from './client';
-import { parseStream } from '@fast-csv/parse';
+import { parseStream, parse } from '@fast-csv/parse';
 import * as I from './types';
+import { pipeline } from 'stream';
+import { Transform } from 'stream';
+import { unzip } from 'zlib';
+import { unzipIfZipped } from './transforms';
 
 export class AzureDatalakeExt {
 
@@ -15,7 +19,8 @@ export class AzureDatalakeExt {
     /**
      * 
      * @param props the property object
-     * @param props.eachRow Function called on each row
+     * @param props.url the url of the data to perform this reduce upon.
+     * @param props.reducer Function called on each row
      * @param parserOptions - see https://c2fo.github.io/fast-csv/docs/parsing/options for available options such as skipping headers, or objectmode
      */
     reduce( props:I.extReduceProps, parserOptions={} ):Promise<any> {
@@ -36,13 +41,20 @@ export class AzureDatalakeExt {
                 return reject(err);
             }
 
-            parseStream(stream, parserOptions)
-                .on('data', data => {
-                    accumulator = reducer(accumulator, data, i);
-                    i++;
-                })
-                .on('error', err => reject)
-                .on('end', () => resolve(accumulator));
+            pipeline(
+                stream,
+                unzipIfZipped(),
+                parse(parserOptions)
+                    .on('data', data => {
+                        accumulator = reducer(accumulator, data, i);
+                    })
+                    .on('error', err => reject)
+                    .on('end', () => resolve(accumulator))
+                ,
+                err => reject
+            );
+
+            return accumulator;
         });
 
     }
@@ -69,16 +81,28 @@ export class AzureDatalakeExt {
 
             let promises = [];
 
-            parseStream(stream, parserOptions)
-                .on('data', data => {
-                    promises.push(mapper(data, i));
-                    i++;
-                })
-                .on('error', reject)
-                .on('end', async () => {
-                    const result = await Promise.all(promises)
-                    resolve(result);
-                })
+            try {
+
+                pipeline(
+                    stream,
+                    unzipIfZipped(),
+                    parse(parserOptions)
+                        .on('data', data => {
+                            promises.push(mapper(data, i));
+                            i++;
+                        })
+                        .on('error', reject)
+                        .on('end', async () => {
+                            const result = await Promise.all(promises)
+                            resolve(result);
+                        })
+                    ,
+                    err => reject
+                );
+            }
+            catch( err ) {
+                return reject(err);
+            }
 
         });
     }
@@ -102,7 +126,6 @@ export class AzureDatalakeExt {
             } = props;
 
             let { block } = props,
-                stream,
                 i=0,
                 promises=[];
 
@@ -110,25 +133,38 @@ export class AzureDatalakeExt {
 
             const finalize = () => resolve();
 
+            let stream;
             try {
                 stream = await this.client.readableStream({url});
             } catch( err ){
                 return reject(err);
             }
 
-            parseStream(stream, parserOptions)
-                .on('data', data => {
-                    promises.push(fn(data, i));
-                    i++;
-                })
-                .on('error', reject)
-                .on('end', async () => {
-                    if(block) {
-                        await Promise.all(promises);
-                        finalize();
-                    }
-                });
-
+            try {
+            
+                pipeline(
+                    stream,
+                    unzipIfZipped(),
+                    parse(parserOptions)
+                        .on('data', data => {
+                            promises.push(fn(data, i));
+                            i++;
+                        })
+                        .on('error', reject)
+                        .on('end', async () => {
+                            if(block) {
+                                await Promise.all(promises);
+                                finalize();
+                            }
+                        })
+                    ,
+                    err => reject
+                )                
+            }
+            catch( err ) {
+                return reject(err);
+            }
+            
             if(!block)
                 finalize();
                 

@@ -35,15 +35,17 @@ const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
 const stream_1 = require("stream");
 const ext_1 = require("./ext");
+const streams_1 = require("./streams");
 class AzureDatalakeClient {
     constructor() {
         this.savePath = '.';
         this.serviceClients = {};
         this.ext = new ext_1.AzureDatalakeExt({ client: this });
+        this.streams = new streams_1.AzureDatalakeStreams({ client: this });
         this._isValidConfig();
     }
     /**
-     * Check file existence from a url
+     * Check file/blob existence from a url
      *
      * @param props
      * @param props.url string the url of the file to check
@@ -56,7 +58,7 @@ class AzureDatalakeClient {
         });
     }
     /**
-     * Stream a file from it's URL
+     * Stream a file/blob from it's URL, consuming it with callbacks a page at a time.
      *
      * @param props the argument object
      * @param props.onData Function invoked upon receipt of a chunk
@@ -70,7 +72,7 @@ class AzureDatalakeClient {
                 return new Promise((resolve, reject) => {
                     readableStream.on('data', onData),
                         readableStream.on('end', _ => {
-                            onEnd();
+                            typeof onEnd === 'function' ? onEnd() : null;
                             resolve(true);
                         });
                     readableStream.on('error', reject);
@@ -83,11 +85,26 @@ class AzureDatalakeClient {
         });
     }
     /**
+     * Get a datalake file as a readable stream
+     *
+     * @param props
+     */
+    readableStream(props) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const { url } = props;
+            if (!(yield this.exists({ url })))
+                throw `AzureDatalakeClient::readableStream received an invalid URL`;
+            const client = this.getFileClient({ url });
+            const downloadResponse = yield client.read();
+            return downloadResponse.readableStreamBody;
+        });
+    }
+    /**
      * Download a file to memory/variable
      *
      * @param props
      */
-    download(props) {
+    get(props) {
         return new Promise((resolve, reject) => __awaiter(this, void 0, void 0, function* () {
             const { url } = props;
             const chunks = [];
@@ -129,12 +146,12 @@ class AzureDatalakeClient {
         });
     }
     /**
-     * Upload a file to a specific URL
+     * Upload a data to a file/blob at a specific URL
      *
      * @param props the argument object
      * @param props.url the target URL of this file upload.
      */
-    upload(props) {
+    put(props) {
         const { url } = props;
     }
     /**
@@ -150,8 +167,11 @@ class AzureDatalakeClient {
         this.savePath = path;
     }
     /**
+     * Get a Service Client for this Azure Datalake Service
      *
      * @param props url string the url to gain a service client for.
+     *
+     * @returns DataLakeServiceClient
      */
     getServiceClient(props) {
         const { url } = props;
@@ -161,14 +181,33 @@ class AzureDatalakeClient {
         }
         return this.serviceClients[hostURL];
     }
+    /**
+     * Get an AzureFileClient for the provided URL
+     *
+     * @param props
+     * @param props.url string the url of the file/blob
+     *
+     * @returns DataLakeFileClient.
+     *
+     */
     getFileClient(props) {
         const { url } = props;
         const fileClient = new storage_file_datalake_1.DataLakeFileClient(url, this.getCredential());
         return fileClient;
     }
+    /**
+     * Get the Azure credential. Currently only gains it via environment variables.
+     *
+     * @todo offer multiple authenication strategies.
+     *
+     * @returns DefaultAzureCredential
+     */
     getCredential() {
         return new identity_1.DefaultAzureCredential();
     }
+    /**
+     * Validates we have a valid environment/configuration to transact with the azure cloud. nb. does NOT verify the credentials are correct though.
+     */
     _isValidConfig() {
         try {
             if (!Boolean(process.env.AZURE_TENANT_ID))
