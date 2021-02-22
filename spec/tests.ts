@@ -29,9 +29,11 @@ import {
 describe(`Datalake client tests`, function() {
 
     let instance:AzureDatalakeClient;
-    let validURL = `https://nusatradeadl.blob.core.windows.net/dev/working/BEVERAGE%20RTD/calendar_constraints.csv`;
+    //let validURL = `https://nusatradeadl.blob.core.windows.net/dev/working/BEVERAGE%20RTD/calendar_constraints.csv`;
     let validURLNotExists = `https://nusatradeadl.blob.core.windows.net/dev/working/BEVERAGE%20RTD/nofilehere.csv`;
     let validURLGunzipped ='https://nusatradeadluat.blob.core.windows.net/simulation-service/scenario-results/SYSTEM/PIZZA-optimization-20201216-0/PIZZA/input/calendar_constraints.csv.gz'
+
+    let validURL = `https://nusatradeadluat.blob.core.windows.net/simulation-service/scenario-results/SYSTEM/PIZZA-optimization-20201216-0/PIZZA/output/optimized_simulated.csv.gz`;
 
     describe(`Setup`, () => {
 
@@ -344,6 +346,8 @@ describe(`Datalake client tests`, function() {
 
             it(`invokes forEach with the validURL`, async () => {
 
+                const instance = new AzureDatalakeClient();
+
                 //we need the row nums
                 const count = await instance.ext.count({url: validURL});
 
@@ -352,7 +356,8 @@ describe(`Datalake client tests`, function() {
                     cnt++;
                 }});
 
-                assert(cnt === count, 'failed');
+                //minus 1 because row 0 is a columns title row
+                assert(cnt === (count-1), 'failed');
 
             });
 
@@ -371,6 +376,8 @@ describe(`Datalake client tests`, function() {
 
             it(`invokes forEach with a validURL , nonblocking`, async () => {
 
+                const instance = new AzureDatalakeClient();
+
                 //we need the row nums
                 const count = await instance.ext.count({url: validURL});
 
@@ -387,7 +394,7 @@ describe(`Datalake client tests`, function() {
                 await new Promise(r => setTimeout(e=> {
                     assert(invoked, 'failed');
                     r(true);
-                }, 0))
+                }, 100))
             });
 
             it(`invokes forEach with a valid Gzipped URL`, async () => {
@@ -397,6 +404,29 @@ describe(`Datalake client tests`, function() {
                     cnt++;
                 }});
             })
+
+        });
+
+    });
+
+    describe.skip(`Single File Test`, () => {
+
+        it(`Tests a reduce on a given file`, async () => {
+
+            const instance = new AzureDatalakeClient();
+            
+            const result = await instance.ext.reduce({
+                //url: "https://nusatradeadluat.blob.core.windows.net/simulation-service/scenario-results/SYSTEM/PIZZA-optimization-20201216-0/PIZZA/output/optimized_simulated.csv.gz",
+                url:'https://nusatradeadl.blob.core.windows.net/dev/working/BEVERAGE%20RTD/calendar_constraints.csv',
+                reducer: ( acc, data , i ) => {
+                    console.log('---')
+                    return acc+1
+                },
+                accumulator: 0
+
+            }, {delimiter: '|'})
+
+            console.log('---')
 
         });
 

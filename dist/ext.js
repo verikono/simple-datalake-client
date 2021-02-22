@@ -1,4 +1,23 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    Object.defineProperty(o, k2, { enumerable: true, get: function() { return m[k]; } });
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || function (mod) {
+    if (mod && mod.__esModule) return mod;
+    var result = {};
+    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
+    __setModuleDefault(result, mod);
+    return result;
+};
 var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
     function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
     return new (P || (P = Promise))(function (resolve, reject) {
@@ -12,7 +31,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.AzureDatalakeExt = void 0;
 const parse_1 = require("@fast-csv/parse");
 const stream_1 = require("stream");
-const transforms_1 = require("./transforms");
+const zlib = __importStar(require("zlib"));
 class AzureDatalakeExt {
     constructor(props) {
         this.client = null;
@@ -29,17 +48,34 @@ class AzureDatalakeExt {
     reduce(props, parserOptions = {}) {
         return new Promise((resolve, reject) => __awaiter(this, void 0, void 0, function* () {
             const { url, reducer } = props;
-            let { accumulator } = props, i = 0;
+            let { accumulator } = props, i = 0, keys;
+            parserOptions['key_values'] = parserOptions['key_values'] === undefined
+                ? true : parserOptions['key_values'];
             let stream;
             try {
                 stream = yield this.client.readableStream({ url });
+                if (url.substr(-2) === 'gz')
+                    stream = stream.pipe(zlib.createGunzip());
             }
             catch (err) {
                 return reject(err);
             }
-            stream_1.pipeline(stream, transforms_1.unzipIfZipped(), parse_1.parse(parserOptions)
+            stream_1.pipeline(stream, parse_1.parse(parserOptions)
                 .on('data', data => {
-                accumulator = reducer(accumulator, data, i);
+                if (parserOptions['key_values']) {
+                    if (i === 0 && !keys) {
+                        keys = data;
+                        return;
+                    }
+                    const keyed_data = keys.reduce((acc, key, i) => {
+                        acc[key] = data[i];
+                        return acc;
+                    }, {});
+                    accumulator = reducer(accumulator, keyed_data, i);
+                }
+                else {
+                    accumulator = reducer(accumulator, data, i);
+                }
             })
                 .on('error', err => reject)
                 .on('end', () => resolve(accumulator)), err => reject);
@@ -56,20 +92,36 @@ class AzureDatalakeExt {
         return __awaiter(this, void 0, void 0, function* () {
             return new Promise((resolve, reject) => __awaiter(this, void 0, void 0, function* () {
                 const { url } = props;
-                let { mapper } = props, i = 0;
+                let { mapper } = props, i = 0, promises = [], keys;
+                parserOptions['key_values'] = parserOptions['key_values'] === undefined
+                    ? true : parserOptions['key_values'];
                 let stream;
                 try {
                     stream = yield this.client.readableStream({ url });
+                    if (url.substr(-2) === 'gz')
+                        stream = stream.pipe(zlib.createGunzip());
                 }
                 catch (err) {
                     return reject(err);
                 }
-                let promises = [];
                 try {
-                    stream_1.pipeline(stream, transforms_1.unzipIfZipped(), parse_1.parse(parserOptions)
+                    stream_1.pipeline(stream, parse_1.parse(parserOptions)
                         .on('data', data => {
-                        promises.push(mapper(data, i));
-                        i++;
+                        if (parserOptions['key_values']) {
+                            if (i === 0 && !keys) {
+                                keys = data;
+                                return;
+                            }
+                            const keyed_data = keys.reduce((acc, key, i) => {
+                                acc[key] = data[i];
+                                return acc;
+                            }, {});
+                            promises.push(mapper(keyed_data, i));
+                        }
+                        else {
+                            promises.push(mapper(data, i));
+                            i++;
+                        }
                     })
                         .on('error', reject)
                         .on('end', () => __awaiter(this, void 0, void 0, function* () {
@@ -95,21 +147,38 @@ class AzureDatalakeExt {
     forEach(props, parserOptions = {}) {
         return new Promise((resolve, reject) => __awaiter(this, void 0, void 0, function* () {
             const { url, fn } = props;
-            let { block } = props, i = 0, promises = [];
+            let { block } = props, i = 0, promises = [], keys;
+            parserOptions['key_values'] = parserOptions['key_values'] === undefined
+                ? true : parserOptions['key_values'];
             block = block === undefined ? true : block;
             const finalize = () => resolve();
             let stream;
             try {
                 stream = yield this.client.readableStream({ url });
+                if (url.substr(-2) === 'gz')
+                    stream = stream.pipe(zlib.createGunzip());
             }
             catch (err) {
                 return reject(err);
             }
             try {
-                stream_1.pipeline(stream, transforms_1.unzipIfZipped(), parse_1.parse(parserOptions)
+                stream_1.pipeline(stream, parse_1.parse(parserOptions)
                     .on('data', data => {
-                    promises.push(fn(data, i));
-                    i++;
+                    if (parserOptions['key_values']) {
+                        if (i === 0 && !keys) {
+                            keys = data;
+                            return;
+                        }
+                        const keyed_data = keys.reduce((acc, key, i) => {
+                            acc[key] = data[i];
+                            return acc;
+                        }, {});
+                        promises.push(fn(keyed_data, i));
+                    }
+                    else {
+                        promises.push(fn(data, i));
+                        i++;
+                    }
                 })
                     .on('error', reject)
                     .on('end', () => __awaiter(this, void 0, void 0, function* () {
@@ -137,14 +206,30 @@ class AzureDatalakeExt {
                 let stream, i = 0;
                 try {
                     stream = yield this.client.readableStream({ url });
+                    if (url.substr(-2) === 'gz')
+                        stream = stream.pipe(zlib.createGunzip());
                 }
                 catch (err) {
                     return reject(err);
                 }
-                parse_1.parseStream(stream, parserOptions)
-                    .on('data', data => i++)
-                    .on('error', reject)
-                    .on('end', () => resolve(i));
+                try {
+                    stream_1.pipeline(stream, parse_1.parse(parserOptions)
+                        .on('data', data => {
+                        i++;
+                    })
+                        .on('error', err => {
+                        reject(err);
+                    })
+                        .on('end', () => {
+                        resolve(i);
+                    }), err => {
+                        if (err)
+                            return reject(err);
+                    });
+                }
+                catch (err) {
+                    console.log('>>>');
+                }
             }));
         });
     }

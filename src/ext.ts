@@ -1,10 +1,8 @@
 import { AzureDatalakeClient } from './client';
-import { parseStream, parse } from '@fast-csv/parse';
+import { parse } from '@fast-csv/parse';
 import * as I from './types';
 import { pipeline } from 'stream';
-import { Transform } from 'stream';
-import { unzip } from 'zlib';
-import { unzipIfZipped } from './transforms';
+import * as zlib from 'zlib';
 
 export class AzureDatalakeExt {
 
@@ -32,21 +30,47 @@ export class AzureDatalakeExt {
                 reducer
             } = props;
 
-            let { accumulator } = props, i=0;
+            let { accumulator } = props,
+                i=0,
+                keys;
+
+            parserOptions['key_values'] = parserOptions['key_values'] === undefined
+                ? true : parserOptions['key_values'];
 
             let stream;
             try {
                 stream = await this.client.readableStream({url});
+                if(url.substr(-2) === 'gz')
+                    stream = stream.pipe(zlib.createGunzip())
+
             } catch( err ){
                 return reject(err);
             }
 
             pipeline(
                 stream,
-                unzipIfZipped(),
                 parse(parserOptions)
                     .on('data', data => {
-                        accumulator = reducer(accumulator, data, i);
+
+                        if(parserOptions['key_values']) {
+                            if(i === 0 && !keys) {
+                                keys = data;
+                                return;    
+                            }
+
+                            const keyed_data = keys.reduce((acc, key, i) => {
+                                acc[key] = data[i];
+                                return acc;
+                            }, {})
+
+                            accumulator = reducer(accumulator, keyed_data, i);
+
+                        }
+                        else {
+
+                            accumulator = reducer(accumulator, data, i);
+                        }
+
                     })
                     .on('error', err => reject)
                     .on('end', () => resolve(accumulator))
@@ -70,26 +94,50 @@ export class AzureDatalakeExt {
         return new Promise( async (resolve, reject) => {
 
             const { url } = props;
-            let { mapper } = props, i=0;
+            let { mapper } = props,
+                i=0,
+                promises=[],
+                keys;
+
+            parserOptions['key_values'] = parserOptions['key_values'] === undefined
+                ? true : parserOptions['key_values'];
 
             let stream;
             try {
                 stream = await this.client.readableStream({url});
+                if(url.substr(-2) === 'gz')
+                    stream = stream.pipe(zlib.createGunzip())
+
             } catch( err ){
                 return reject(err);
             }
-
-            let promises = [];
 
             try {
 
                 pipeline(
                     stream,
-                    unzipIfZipped(),
                     parse(parserOptions)
                         .on('data', data => {
-                            promises.push(mapper(data, i));
-                            i++;
+
+                            if(parserOptions['key_values']) {
+                                if(i === 0 && !keys) {
+                                    keys = data;
+                                    return;    
+                                }
+    
+                                const keyed_data = keys.reduce((acc, key, i) => {
+                                    acc[key] = data[i];
+                                    return acc;
+                                }, {})
+    
+                                promises.push(mapper(keyed_data, i));
+    
+                            }
+                            else {
+
+                                promises.push(mapper(data, i));
+                                i++;
+                            }
                         })
                         .on('error', reject)
                         .on('end', async () => {
@@ -127,7 +175,11 @@ export class AzureDatalakeExt {
 
             let { block } = props,
                 i=0,
-                promises=[];
+                promises=[],
+                keys;
+
+            parserOptions['key_values'] = parserOptions['key_values'] === undefined
+                ? true : parserOptions['key_values'];
 
             block = block === undefined ? true : block;
 
@@ -136,6 +188,8 @@ export class AzureDatalakeExt {
             let stream;
             try {
                 stream = await this.client.readableStream({url});
+                if(url.substr(-2) === 'gz')
+                    stream = stream.pipe(zlib.createGunzip())
             } catch( err ){
                 return reject(err);
             }
@@ -144,11 +198,28 @@ export class AzureDatalakeExt {
             
                 pipeline(
                     stream,
-                    unzipIfZipped(),
                     parse(parserOptions)
                         .on('data', data => {
-                            promises.push(fn(data, i));
-                            i++;
+
+                            if(parserOptions['key_values']) {
+                                if(i === 0 && !keys) {
+                                    keys = data;
+                                    return;    
+                                }
+    
+                                const keyed_data = keys.reduce((acc, key, i) => {
+                                    acc[key] = data[i];
+                                    return acc;
+                                }, {})
+    
+                                promises.push(fn(keyed_data, i));
+    
+                            }
+                            else {
+
+                                promises.push(fn(data, i));
+                                i++;
+                            }
                         })
                         .on('error', reject)
                         .on('end', async () => {
@@ -175,26 +246,49 @@ export class AzureDatalakeExt {
      * Get the number of rows in this datafile
      * @param props 
      */
-    async count( props, parserOptions={} ) {
+    async count( props, parserOptions={} ):Promise<number> {
 
         return new Promise( async (resolve, reject) => {
 
             const { url } = props;
 
-            let stream, i=0;
+            let stream,
+                i=0;
+
             try {
                 stream = await this.client.readableStream({url});
+                if(url.substr(-2) === 'gz')
+                    stream = stream.pipe(zlib.createGunzip())
             } catch( err ){
                 return reject(err);
             }
 
-            parseStream(stream, parserOptions)
-                .on('data', data => i++)
-                .on('error', reject)
-                .on('end', () => resolve(i));
+           
 
+            try {
+                pipeline(
+                    stream,
+                    parse(parserOptions)
+                        .on('data', data => {
+                            i++
+                        })
+                        .on('error', err => {
+                            reject(err)
+                        })
+                        .on('end', () => {
+                            resolve(i)
+                        })
+                        , err => {
+                            if(err)
+                                return reject(err)
+                        }
+                );
+
+            }
+            catch( err ) {
+                console.log('>>>')
+            }
         });
-
     }
 
 }
