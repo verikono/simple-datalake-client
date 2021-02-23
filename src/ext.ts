@@ -59,27 +59,35 @@ export class AzureDatalakeExt {
                 parse(parserOptions)
                     .on('data', data => {
 
-                        if(parserOptions['key_values']) {
-                            if(i === 0 && !keys) {
-                                keys = data;
-                                return;    
+                        try {
+
+                            if(parserOptions['key_values']) {
+                                if(i === 0 && !keys) {
+                                    keys = data;
+                                    return;    
+                                }
+
+                                const keyed_data = keys.reduce((acc, key, i) => {
+                                    acc[key] = data[i];
+                                    return acc;
+                                }, {})
+
+                                accumulator = reducer(accumulator, keyed_data, i);
+
                             }
+                            else {
 
-                            const keyed_data = keys.reduce((acc, key, i) => {
-                                acc[key] = data[i];
-                                return acc;
-                            }, {})
-
-                            accumulator = reducer(accumulator, keyed_data, i);
-
-                        }
-                        else {
-
-                            accumulator = reducer(accumulator, data, i);
+                                accumulator = reducer(accumulator, data, i);
+                            }
+                        } catch( err ) {
+                            
+                            throw err;
                         }
 
                     })
-                    .on('error', err => reject)
+                    .on('error', err => {
+                        return reject(err)
+                    })
                     .on('end', () => resolve(accumulator))
                 ,
                 err => reject
@@ -270,7 +278,8 @@ export class AzureDatalakeExt {
             let i=0,
                 size,
                 slice=[],
-                promises=[];
+                promises=[],
+                keys;
 
             size = props.size || 1000;
 
@@ -293,6 +302,20 @@ export class AzureDatalakeExt {
                     stream,
                     parse(parserOptions)
                         .on('data', data => {
+
+                            if(parserOptions['key_values']) {
+                                if(i === 0 && !keys) {
+                                    keys = data;
+                                    return;    
+                                }
+    
+                                const keyed_data = keys.reduce((acc, key, i) => {
+                                    acc[key] = data[i];
+                                    return acc;
+                                }, {})
+                                data = keyed_data;
+                            }
+
                             slice.push(data);
                             if(slice.length !== size)
                                 return;
@@ -300,7 +323,7 @@ export class AzureDatalakeExt {
                             const ret = mapper(slice);
                             if(ret instanceof Promise)
                                 promises.push(ret);
-
+                            
                             slice = [];
                         })
                         .on('end', async () => {
@@ -313,7 +336,8 @@ export class AzureDatalakeExt {
                             await Promise.all(promises);
                             resolve(true);
                         })
-                        .on('error', err => reject)
+                        .on('error', err => reject),
+                    err => reject
                 )
             }
             catch( err ) {

@@ -34,11 +34,13 @@ describe(`Datalake client tests`, function() {
     this.timeout(120000);
 
     let instance:AzureDatalakeClient;
-    //let validURL = `https://nusatradeadl.blob.core.windows.net/dev/working/BEVERAGE%20RTD/calendar_constraints.csv`;
-    let validURLNotExists = `https://nusatradeadl.blob.core.windows.net/dev/working/BEVERAGE%20RTD/nofilehere.csv`;
     let validURLGunzipped ='https://nusatradeadluat.blob.core.windows.net/simulation-service/scenario-results/SYSTEM/PIZZA-optimization-20201216-0/PIZZA/input/calendar_constraints.csv.gz'
-
-    let validURL = `https://nusatradeadluat.blob.core.windows.net/simulation-service/scenario-results/SYSTEM/PIZZA-optimization-20201216-0/PIZZA/output/optimized_simulated.csv.gz`;
+    
+    const validURL = process.env.TEST_VALID_URL;
+    const validURL_BIG = process.env.TEST_VALID_URL_BIG;
+    const validURL_ZIPPED = process.env.TEST_VALID_URL_ZIPPED;
+    const validURL_BIG_ZIPPED = process.env.TEST_VALID_URL_BIG_ZIPPED
+    const validURLNotExists = validURL.split('/').slice(0, -1).concat('nofilenoway.csv').join('/')
 
     describe(`Setup`, () => {
 
@@ -48,16 +50,16 @@ describe(`Datalake client tests`, function() {
             it(`Has AZURE_CLIENT_ID`, () => Boolean(process.env.AZURE_CLIENT_ID));
             it(`Has AZURE_CLIENT_SECRET`, () => Boolean(process.env.AZURE_CLIENT_SECRET));
 
+            it(`Has STORAGE_ACCOUNT`, () => Boolean(process.env.STORAGE_ACCOUNT));
+            it(`Has STORAGE_ACCOUNT_KEY`, () => Boolean(process.env.STORAGE_ACCOUNT_KEY));
+            it(`Has STORAGE_ACCOUNT_SAS`, () => Boolean(process.env.STORAGE_ACCOUNT_SAS));
+
+            it(`Has TEST_VALID_URL`, () => Boolean(validURL));
+            it(`Has TEST_VALID_URL_BIG`, () => Boolean(validURL_BIG));
+            it(`Has validURL_ZIPPED`, () => Boolean(validURL_ZIPPED));
+            it(`Has validURL_BIG_ZIPPED`, () => Boolean(validURL_BIG_ZIPPED));
+
         })
-
-        describe(`Instantiation`, () => {
-
-            it(`Instances AzureDatalakeClient`, () => {
-
-                instance = new  AzureDatalakeClient();
-            });
-
-        });
 
     });
 
@@ -65,6 +67,7 @@ describe(`Datalake client tests`, function() {
 
         describe(`_parseURL`, () => {
 
+            const instance = new  AzureDatalakeClient();
             const testURL = `https://nusatradeadluat.blob.core.windows.net/dev/working/SNACKING/reference_calendar.csv`
             let result;
 
@@ -148,9 +151,11 @@ describe(`Datalake client tests`, function() {
             })
 
         });
-
+        
         describe(`getCredential`, () => {
 
+            const instance = new  AzureDatalakeClient();
+            
             it(`invokes getCredential`, () => {
 
                 const result = instance.getCredential()
@@ -161,13 +166,13 @@ describe(`Datalake client tests`, function() {
 
         describe(`getServiceClient`, () => {
 
-            const testURL = `https://nusatradeadl.blob.core.windows.net/dev/working/BEVERAGE%20RTD/calendar_constraints.csv`;
+            const instance = new  AzureDatalakeClient();
             let result:DataLakeServiceClient;
 
             it(`invokes the method`, () => {
 
                 result = instance.getServiceClient({
-                    url: testURL
+                    url: validURL
                 });
             });
 
@@ -178,7 +183,7 @@ describe(`Datalake client tests`, function() {
 
             it(`Cached the client in the instance, keyed to its hosturl`, async () => {
 
-                const { hostURL } = instance._parseURL(testURL)
+                const { hostURL } = instance._parseURL(validURL)
                 assert(
                     instance.serviceClients.hasOwnProperty(hostURL) &&
                     instance.serviceClients[hostURL] instanceof DataLakeServiceClient,
@@ -195,12 +200,13 @@ describe(`Datalake client tests`, function() {
 
         describe(`getFileClient`, () => {
 
+            const instance = new  AzureDatalakeClient();
             let result:DataLakeFileClient;
 
             it(`invokes the method`, () => {
 
                 result = instance.getFileClient({url: validURL});
-                console.log('---')
+                assert(result instanceof DataLakeFileClient, 'failed');
             });
 
 
@@ -208,6 +214,7 @@ describe(`Datalake client tests`, function() {
 
         describe(`exists`, () => {
 
+            const instance = new AzureDatalakeClient();
             let result:boolean;
 
             it(`invokes the method on a known existing url`, async () => {
@@ -226,6 +233,8 @@ describe(`Datalake client tests`, function() {
         });
 
         describe(`stream`, () => {
+
+            const instance = new AzureDatalakeClient();
 
             it(`Invokes stream`, async () => {
 
@@ -251,6 +260,8 @@ describe(`Datalake client tests`, function() {
 
         describe(`get`, () => {
 
+            const instance = new AzureDatalakeClient();
+
             it(`Invokes get upon a valid URL`, async () => {
                 const result = await instance.get({url: validURL});
                 assert(typeof result === 'string' && result.length > 1, 'failed');
@@ -258,6 +269,8 @@ describe(`Datalake client tests`, function() {
         });
 
         describe(`save`, () => {
+
+            const instance = new AzureDatalakeClient();
 
             it(`invokes save upon a valid URL`, async () => {
 
@@ -286,23 +299,47 @@ describe(`Datalake client tests`, function() {
 
     });
 
-    describe(`Extensions Tests`, () => {
+    describe.only(`Extensions Tests`, () => {
 
-        it(`Extendsions exist on instance`, () => {
+        it(`Extensions exist on instance`, () => {
 
+            const instance = new AzureDatalakeClient();
             assert(instance.ext instanceof AzureDatalakeExt, 'failed');
+        });
+
+        describe(`count`, () => {
+
+            const instance = new AzureDatalakeClient();
+ 
+            it(`invokes count upon a valid URL`, async () => {
+
+                const result = await instance.ext.count({url: validURL});
+                assert(result && typeof result === 'number' && result > 1, 'failed');
+            });
+
+            it(`invokes count upon a valid URL`, async () => {
+
+                const result = await instance.ext.count({url: validURL_ZIPPED});
+                assert(result && typeof result === 'number' && result > 1, 'failed');
+            });
+
         });
 
         describe(`reduce`, () => {
 
+            const instance = new AzureDatalakeClient();
+
             it(`invokes reduce with a valid URL`, async () => {
                 
-                let cnt = 0;
-                const result:number = await instance.ext.reduce({url: validURL, accumulator: 0, reducer: (acc, data, i) => {
-                    cnt++;
-                    return acc+1;
-                }});
-                assert(cnt === result, 'failed');
+                const cnt = await instance.ext.count({url: validURL});
+                const result = await instance.ext.reduce({
+                    url: validURL,
+                    reducer: acc => acc+1,
+                    accumulator: 0
+                });
+
+                //cnt-1 because a CSV has 1 header row.
+                assert(cnt-1 === result, 'failed');
 
             });
 
@@ -322,36 +359,70 @@ describe(`Datalake client tests`, function() {
 
             it(`invokes reducer with a valid GZIPPED URL`, async () => {
 
-                let cnt = 0;
+                let cnt = await instance.ext.count({url: validURL});
                 const result = await instance.ext.reduce({
-                    url: validURLGunzipped,
-                    reducer: (acc, data) => {
-                        acc.push(data);
-                        return acc;
-                    },
-                    accumulator: []
+                    url: validURL_ZIPPED,
+                    reducer: (acc, data) => acc+1,
+                    accumulator: 0
                 });
-                console.log('---')
+                //cnt-1 because a CSV has 1 header row.
+                assert(cnt-1 === result, 'failed')
             });
+
+            it(`gracefully errors when a problem occurs in the reducer`, async () => {
+
+                try {
+                    //invokes Array.push on a number.
+                    await instance.ext.reduce({
+                        url: validURL,
+                        reducer: (acc, data) => acc.push(3),
+                        accumulator: 0
+                    })
+                }
+                catch( err ){
+
+                    assert(err && err.message.includes('not a function'), 'failed')
+                }
+            })
 
         });
 
         describe(`map`, () => {
 
+            const instance = new AzureDatalakeClient();
+
             it(`invokes map with a valid URL`, async () => {
 
+                const cnt = await instance.ext.count({url: validURL});
                 const result = await instance.ext.map({url: validURL, mapper: (data, i) => {
                     return i;
                 }});
+
+                assert(cnt-1 === result.length, 'failed');
             });
+
+            it(`gracefully errors when a problem occurs in the reducer`, async () => {
+
+                try {
+                    //invokes Array.push on a number.
+                    await instance.ext.map({
+                        url: validURL,
+                        mapper: (acc, data) => data.somevar.thatdoesntexist
+                    })
+                }
+                catch( err ){
+
+                    assert(err && err.message.includes('Cannot read property'), 'failed')
+                }
+            })
 
         });
 
         describe(`forEach`, () => {
 
-            it(`invokes forEach with the validURL`, async () => {
+            const instance = new AzureDatalakeClient();
 
-                const instance = new AzureDatalakeClient();
+            it(`invokes forEach with the validURL`, async () => {
 
                 //we need the row nums
                 const count = await instance.ext.count({url: validURL});
@@ -381,8 +452,6 @@ describe(`Datalake client tests`, function() {
 
             it(`invokes forEach with a validURL , nonblocking`, async () => {
 
-                const instance = new AzureDatalakeClient();
-
                 //we need the row nums
                 const count = await instance.ext.count({url: validURL});
 
@@ -405,14 +474,14 @@ describe(`Datalake client tests`, function() {
             it(`invokes forEach with a valid Gzipped URL`, async () => {
                 
                 let cnt = 0;
-                const result = await instance.ext.forEach({url: validURLGunzipped, fn: (data, i) => {
+                const result = await instance.ext.forEach({url: validURL_ZIPPED, fn: (data, i) => {
                     cnt++;
                 }});
             })
 
         });
 
-        describe(`cache`, () => {
+        describe.skip(`cache`, () => {
 
             it(`Caches`, async () => {
 
@@ -432,8 +501,24 @@ describe(`Datalake client tests`, function() {
 
         describe(`mapSlices`, () => {
 
-            it(`invokes mapSlices on `, () => {
+            const instance = new AzureDatalakeClient();
 
+            it(`invokes mapSlices on `, async () => {
+
+                const slicesize = 50;
+                const cnt = await instance.ext.count({url: validURL});
+                let totalRows = 0;
+
+                const result = await instance.ext.mapSlices({
+                    url: validURL,
+                    size: slicesize,
+                    mapper: (rows, i) => {
+                        totalRows = totalRows + rows.length;
+                        assert(rows.length <= slicesize, 'failed -slicesize to big')
+                    }
+                }, {delimiter:'|'});
+
+                assert(totalRows === cnt-1, 'failed');
             });
 
         });
@@ -443,21 +528,6 @@ describe(`Datalake client tests`, function() {
     describe.skip(`Single File Test`, () => {
 
         it(`Tests a reduce on a given file`, async () => {
-
-            const instance = new AzureDatalakeClient();
-            
-            const result = await instance.ext.reduce({
-                //url: "https://nusatradeadluat.blob.core.windows.net/simulation-service/scenario-results/SYSTEM/PIZZA-optimization-20201216-0/PIZZA/output/optimized_simulated.csv.gz",
-                url:'https://nusatradeadl.blob.core.windows.net/dev/working/BEVERAGE%20RTD/calendar_constraints.csv',
-                reducer: ( acc, data , i ) => {
-                    console.log('---')
-                    return acc+1
-                },
-                accumulator: 0
-
-            }, {delimiter: '|'})
-
-            console.log('---')
 
         });
 

@@ -63,22 +63,29 @@ class AzureDatalakeExt {
             }
             stream_1.pipeline(stream, parse_1.parse(parserOptions)
                 .on('data', data => {
-                if (parserOptions['key_values']) {
-                    if (i === 0 && !keys) {
-                        keys = data;
-                        return;
+                try {
+                    if (parserOptions['key_values']) {
+                        if (i === 0 && !keys) {
+                            keys = data;
+                            return;
+                        }
+                        const keyed_data = keys.reduce((acc, key, i) => {
+                            acc[key] = data[i];
+                            return acc;
+                        }, {});
+                        accumulator = reducer(accumulator, keyed_data, i);
                     }
-                    const keyed_data = keys.reduce((acc, key, i) => {
-                        acc[key] = data[i];
-                        return acc;
-                    }, {});
-                    accumulator = reducer(accumulator, keyed_data, i);
+                    else {
+                        accumulator = reducer(accumulator, data, i);
+                    }
                 }
-                else {
-                    accumulator = reducer(accumulator, data, i);
+                catch (err) {
+                    throw err;
                 }
             })
-                .on('error', err => reject)
+                .on('error', err => {
+                return reject(err);
+            })
                 .on('end', () => resolve(accumulator)), err => reject);
             return accumulator;
         }));
@@ -208,7 +215,7 @@ class AzureDatalakeExt {
     mapSlices(props, parserOptions = {}) {
         return new Promise((resolve, reject) => __awaiter(this, void 0, void 0, function* () {
             const { url, mapper } = props;
-            let i = 0, size, slice = [], promises = [];
+            let i = 0, size, slice = [], promises = [], keys;
             size = props.size || 1000;
             parserOptions['key_values'] = parserOptions['key_values'] === undefined
                 ? true : parserOptions['key_values'];
@@ -224,6 +231,17 @@ class AzureDatalakeExt {
             try {
                 stream_1.pipeline(stream, parse_1.parse(parserOptions)
                     .on('data', data => {
+                    if (parserOptions['key_values']) {
+                        if (i === 0 && !keys) {
+                            keys = data;
+                            return;
+                        }
+                        const keyed_data = keys.reduce((acc, key, i) => {
+                            acc[key] = data[i];
+                            return acc;
+                        }, {});
+                        data = keyed_data;
+                    }
                     slice.push(data);
                     if (slice.length !== size)
                         return;
@@ -241,7 +259,7 @@ class AzureDatalakeExt {
                     yield Promise.all(promises);
                     resolve(true);
                 }))
-                    .on('error', err => reject));
+                    .on('error', err => reject), err => reject);
             }
             catch (err) {
                 return reject(err);
