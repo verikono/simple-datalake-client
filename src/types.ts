@@ -88,3 +88,7 @@ export interface extReduceProps {
     reducer: Function; //the fuction processed on each row, returning a new value for the accumulator
     accumulator?: any; //initial value, altered from every return of the reducer.
 }
+
+export interface extCacheReturn {
+    numRowsInserted: number;
+}

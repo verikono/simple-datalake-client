@@ -26,7 +26,12 @@ import {
     AzureDatalakeExt
 } from '../src/ext';
 
+
+import * as crypto from 'crypto';
+
 describe(`Datalake client tests`, function() {
+
+    this.timeout(120000);
 
     let instance:AzureDatalakeClient;
     //let validURL = `https://nusatradeadl.blob.core.windows.net/dev/working/BEVERAGE%20RTD/calendar_constraints.csv`;
@@ -404,6 +409,32 @@ describe(`Datalake client tests`, function() {
                     cnt++;
                 }});
             })
+
+        });
+
+        describe(`cache`, () => {
+
+            it(`Caches`, async () => {
+
+                const instance = new AzureDatalakeClient();
+                const result = await instance.ext.cache({
+                    url: validURL,
+                    table: 'brenstest',
+                    partitionKey: 'planning_account',
+                    rowKey: row =>  crypto.createHash('md5').update(JSON.stringify(row)).digest("hex")
+                }, {delimiter:'|'});
+
+                const count = await instance.ext.count({url: validURL}, {delimiter:'|'})
+                assert(count === result.numRowsInserted, 'failed');
+            });
+
+        });
+
+        describe(`mapSlices`, () => {
+
+            it(`invokes mapSlices on `, () => {
+
+            });
 
         });
 

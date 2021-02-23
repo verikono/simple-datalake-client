@@ -4,6 +4,13 @@ import * as I from './types';
 import { pipeline } from 'stream';
 import * as zlib from 'zlib';
 
+import {
+    TableServiceClient,
+    TablesSharedKeyCredential,
+    TableClient
+} from '@azure/data-tables';
+import { StorageSharedKeyCredential } from '@azure/storage-file-datalake';
+
 export class AzureDatalakeExt {
 
     client:AzureDatalakeClient = null;
@@ -86,6 +93,7 @@ export class AzureDatalakeExt {
     /**
      * 
      * @param props the property object
+     * @param props.url the url of the CSV file we'll be mapping over.
      * @param props.eachRow Function called on each row
      * @param parserOptions - see https://c2fo.github.io/fast-csv/docs/parsing/options for available options such as skipping headers, or objectmode
      */
@@ -243,6 +251,80 @@ export class AzureDatalakeExt {
     }
 
     /**
+     * Map over data in slices. Useful for batch operations such as insertion.
+     * 
+     * @param props the argument object
+     * @param props.mapper the mapping function
+     * @param props.size the size of each slice, default: 1000; 
+     * @param parserOptions 
+     */
+    mapSlices( props, parserOptions={} ) {
+
+        return new Promise( async (resolve, reject) => {
+
+            const {
+                url,
+                mapper
+            } = props;
+
+            let i=0,
+                size,
+                slice=[],
+                promises=[];
+
+            size = props.size || 1000;
+
+            parserOptions['key_values'] = parserOptions['key_values'] === undefined
+                ? true : parserOptions['key_values'];
+
+            let stream;
+            try {
+                stream = await this.client.readableStream({url});
+                if(url.substr(-2) === 'gz')
+                    stream = stream.pipe(zlib.createGunzip())
+
+            } catch( err ){
+                return reject(err);
+            }
+
+            try {
+
+                pipeline(
+                    stream,
+                    parse(parserOptions)
+                        .on('data', data => {
+                            slice.push(data);
+                            if(slice.length !== size)
+                                return;
+                            
+                            const ret = mapper(slice);
+                            if(ret instanceof Promise)
+                                promises.push(ret);
+
+                            slice = [];
+                        })
+                        .on('end', async () => {
+
+                            if(slice.length) {
+                                const ret = mapper(slice);
+                                if(ret instanceof Promise)
+                                    promises.push(ret);
+                            }
+                            await Promise.all(promises);
+                            resolve(true);
+                        })
+                        .on('error', err => reject)
+                )
+            }
+            catch( err ) {
+                return reject(err);
+            }
+
+            
+        });
+    }
+
+    /**
      * Get the number of rows in this datafile
      * @param props 
      */
@@ -291,4 +373,108 @@ export class AzureDatalakeExt {
         });
     }
 
+    /**
+     * Temporary solution for a project i'm on that uses azure storage but will migrate to datalake tables, so we'll replace this very shortly.
+     * Due to the lack of AAD support with azure storage tables this is going to be a bit ugly so the faster we move to datalake tables the better.
+     * 
+     * @param props the argument object
+     * @param props.url string the url of the datalake file
+     * @param props.table string the target tablename
+     * @param props.partitionKey string the field to use for a partiton key
+     * @param props.rowKey string the field to use for the row key
+     * 
+     * @todo allow paritionKey and rowKey to be argued as a function.  
+     */
+    cache( props, parserOptions={} ):Promise<I.extCacheReturn> {
+
+        return new Promise( async (resolve, reject) => {
+
+            const {
+                url,
+                table,
+                delimiter = ',',
+                partitionKey,
+                rowKey
+
+            } = props;
+
+            const {
+                STORAGE_ACCOUNT,
+                STORAGE_ACCOUNT_KEY
+            } = process.env;
+
+            if(typeof STORAGE_ACCOUNT !== "string" || !STORAGE_ACCOUNT.length)
+                throw `simple_datalake_client::cache failed - missing environment variable STORAGE_ACCOUNT`;
+
+            if(typeof STORAGE_ACCOUNT_KEY !== "string" || !STORAGE_ACCOUNT_KEY.length)
+                throw `simple_datalake_client::cache failed - missing environment variable STORAGE_ACCOUNT_KEY`;
+
+            const credential = new TablesSharedKeyCredential(STORAGE_ACCOUNT, STORAGE_ACCOUNT_KEY);
+            const serviceClient = new TableServiceClient(`https://${STORAGE_ACCOUNT}.table.core.windows.net`, credential);
+            const transactClient = new TableClient(
+                `https://${STORAGE_ACCOUNT}.table.core.windows.net`,
+                table,
+                credential
+            )
+
+            try {
+                await serviceClient.createTable(table);
+            } catch( err ) {
+                switch(err.statusCode) {
+                    case 409: //table already exists
+                        try {
+                            await serviceClient.deleteTable(table);
+                            //azure wont allow you to create a table you've recently deleted for about 20 seconds.
+                            //attempting to do so produces an error indicating it is in the process of deleting.
+                            await new Promise(r => setTimeout(e => r(true), 45000));
+                            await serviceClient.createTable(table);
+                        } catch( err ){
+                            return reject(`SimpleDatalakeClient:ext::cache has failed replacing table ${table} - ${err.message}`);
+                        }
+
+                        break;
+                    default:
+                        return reject(`SimpleDatalakeClient:ext::cache failed to build target table ${table} - ${err.message}`);
+                }
+            }
+
+            let numRowsInserted = 0;
+            try {
+                await this.map({
+                    url,
+                    mapper: async (row, i) => {
+                        let result;
+                        try {
+
+                            row.PartitionKey = typeof partitionKey === 'function'
+                                ? partitionKey(row)
+                                : row[partitionKey];
+
+                            row.RowKey = typeof rowKey === 'function'
+                                ? rowKey(row)
+                                :row[rowKey];
+
+                            result = await transactClient.createEntity(row)
+                            numRowsInserted++;
+                        } catch( err ) {
+
+                            await serviceClient.deleteTable(table);
+                            return reject(`Purged table ${table} - data extraction failed - ${err.message}`);
+                        }
+
+                    }
+
+                }, parserOptions);
+            }
+            catch( err ) {
+                reject(err);
+            }
+
+            return resolve({
+                numRowsInserted
+            });
+
+        });
+
+    }
 }
