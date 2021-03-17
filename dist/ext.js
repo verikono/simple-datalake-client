@@ -321,9 +321,9 @@ class AzureDatalakeExt {
             const { url, table, delimiter = ',', partitionKey, rowKey } = props;
             const { STORAGE_ACCOUNT, STORAGE_ACCOUNT_KEY } = process.env;
             if (typeof STORAGE_ACCOUNT !== "string" || !STORAGE_ACCOUNT.length)
-                throw `simple_datalake_client::cache failed - missing environment variable STORAGE_ACCOUNT`;
+                throw Error(`simple_datalake_client::cache failed - missing environment variable STORAGE_ACCOUNT`);
             if (typeof STORAGE_ACCOUNT_KEY !== "string" || !STORAGE_ACCOUNT_KEY.length)
-                throw `simple_datalake_client::cache failed - missing environment variable STORAGE_ACCOUNT_KEY`;
+                throw Error(`simple_datalake_client::cache failed - missing environment variable STORAGE_ACCOUNT_KEY`);
             const credential = new data_tables_1.TablesSharedKeyCredential(STORAGE_ACCOUNT, STORAGE_ACCOUNT_KEY);
             const serviceClient = new data_tables_1.TableServiceClient(`https://${STORAGE_ACCOUNT}.table.core.windows.net`, credential);
             const transactClient = new data_tables_1.TableClient(`https://${STORAGE_ACCOUNT}.table.core.windows.net`, table, credential);

@@ -428,10 +428,10 @@ export class AzureDatalakeExt {
             } = process.env;
 
             if(typeof STORAGE_ACCOUNT !== "string" || !STORAGE_ACCOUNT.length)
-                throw `simple_datalake_client::cache failed - missing environment variable STORAGE_ACCOUNT`;
+                throw Error(`simple_datalake_client::cache failed - missing environment variable STORAGE_ACCOUNT`);
 
             if(typeof STORAGE_ACCOUNT_KEY !== "string" || !STORAGE_ACCOUNT_KEY.length)
-                throw `simple_datalake_client::cache failed - missing environment variable STORAGE_ACCOUNT_KEY`;
+                throw Error(`simple_datalake_client::cache failed - missing environment variable STORAGE_ACCOUNT_KEY`);
 
             const credential = new TablesSharedKeyCredential(STORAGE_ACCOUNT, STORAGE_ACCOUNT_KEY);
             const serviceClient = new TableServiceClient(`https://${STORAGE_ACCOUNT}.table.core.windows.net`, credential);

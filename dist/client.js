@@ -93,7 +93,7 @@ class AzureDatalakeClient {
         return __awaiter(this, void 0, void 0, function* () {
             const { url } = props;
             if (!(yield this.exists({ url })))
-                throw `AzureDatalakeClient::readableStream received an invalid URL`;
+                throw Error(`AzureDatalakeClient::readableStream received an invalid URL`);
             const client = this.getFileClient({ url });
             const downloadResponse = yield client.read();
             return downloadResponse.readableStreamBody;
@@ -142,7 +142,7 @@ class AzureDatalakeClient {
             });
         }))
             .catch(err => {
-            throw `AzureDatalakeClient::save failed - ${err.message}`;
+            throw Error(`AzureDatalakeClient::save failed - ${err.message}`);
         });
     }
     /**
@@ -211,14 +211,14 @@ class AzureDatalakeClient {
     _isValidConfig() {
         try {
             if (!Boolean(process.env.AZURE_TENANT_ID))
-                throw 'invalid AZURE_TENANT_ID, set it as an environment variable';
+                throw Error('invalid AZURE_TENANT_ID, set it as an environment variable');
             if (!Boolean(process.env.AZURE_CLIENT_ID))
-                throw 'invalid AZURE_CLIENT_ID, set it as an environment variable';
+                throw Error('invalid AZURE_CLIENT_ID, set it as an environment variable');
             if (!Boolean(process.env.AZURE_CLIENT_SECRET))
-                throw 'invalid AZURE_CLIENT_SECRET, set it as an environment variable';
+                throw Error('invalid AZURE_CLIENT_SECRET, set it as an environment variable');
         }
         catch (err) {
-            throw `AzureDatalakeClient::isValidConfig failed - ${err}`;
+            throw Error(`AzureDatalakeClient::isValidConfig failed - ${err}`);
         }
     }
     /**
