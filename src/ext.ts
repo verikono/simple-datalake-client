@@ -507,7 +507,7 @@ export class AzureDatalakeExt {
                         return resolve(result);
                     }
                     else {
-                        return reject(Error(`SimpleDatalakeClient:ext::cache failed to build target table ${table} - ${err.message}`));
+                        return reject(Error(`SimpleDatalakeClient:ext::cache failed to build target table ${table} using credentials [${STORAGE_ACCOUNT}][${STORAGE_ACCOUNT_KEY}] ${err.message}`));
                     }
                 }
 
