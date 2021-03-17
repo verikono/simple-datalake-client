@@ -299,7 +299,7 @@ describe(`Datalake client tests`, function() {
 
     });
 
-    describe.only(`Extensions Tests`, () => {
+    describe(`Extensions Tests`, () => {
 
         it(`Extensions exist on instance`, () => {
 
@@ -481,7 +481,7 @@ describe(`Datalake client tests`, function() {
 
         });
 
-        describe.skip(`cache`, () => {
+        describe(`cache`, () => {
 
             it(`Caches`, async () => {
 
@@ -495,6 +495,19 @@ describe(`Datalake client tests`, function() {
 
                 const count = await instance.ext.count({url: validURL}, {delimiter:'|'})
                 assert(count === result.numRowsInserted, 'failed');
+            });
+
+            it.only(`Errors appropriately`, () => {
+               
+                const instance = new AzureDatalakeClient();
+
+                return new Promise( async (resolve, reject) => {
+
+                    instance.ext.cache({})
+                        .then( result => reject(Error(`Did not throw the expected error`)))
+                        .catch( err => resolve(true))
+                });
+
             });
 
         });
@@ -525,7 +538,7 @@ describe(`Datalake client tests`, function() {
 
     });
 
-    describe.skip(`Single File Test`, () => {
+    describe(`Single File Test`, () => {
 
         it(`Tests a reduce on a given file`, async () => {
 

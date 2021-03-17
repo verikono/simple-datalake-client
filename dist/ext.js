@@ -318,65 +318,72 @@ class AzureDatalakeExt {
      */
     cache(props, parserOptions = {}) {
         return new Promise((resolve, reject) => __awaiter(this, void 0, void 0, function* () {
-            const { url, table, delimiter = ',', partitionKey, rowKey } = props;
-            const { STORAGE_ACCOUNT, STORAGE_ACCOUNT_KEY } = process.env;
-            if (typeof STORAGE_ACCOUNT !== "string" || !STORAGE_ACCOUNT.length)
-                throw Error(`simple_datalake_client::cache failed - missing environment variable STORAGE_ACCOUNT`);
-            if (typeof STORAGE_ACCOUNT_KEY !== "string" || !STORAGE_ACCOUNT_KEY.length)
-                throw Error(`simple_datalake_client::cache failed - missing environment variable STORAGE_ACCOUNT_KEY`);
-            const credential = new data_tables_1.TablesSharedKeyCredential(STORAGE_ACCOUNT, STORAGE_ACCOUNT_KEY);
-            const serviceClient = new data_tables_1.TableServiceClient(`https://${STORAGE_ACCOUNT}.table.core.windows.net`, credential);
-            const transactClient = new data_tables_1.TableClient(`https://${STORAGE_ACCOUNT}.table.core.windows.net`, table, credential);
             try {
-                yield serviceClient.createTable(table);
-            }
-            catch (err) {
-                switch (err.statusCode) {
-                    case 409: //table already exists
-                        try {
-                            yield serviceClient.deleteTable(table);
-                            //azure wont allow you to create a table you've recently deleted for about 20 seconds.
-                            //attempting to do so produces an error indicating it is in the process of deleting.
-                            yield new Promise(r => setTimeout(e => r(true), 45000));
-                            yield serviceClient.createTable(table);
-                        }
-                        catch (err) {
-                            return reject(`SimpleDatalakeClient:ext::cache has failed replacing table ${table} - ${err.message}`);
-                        }
-                        break;
-                    default:
-                        return reject(`SimpleDatalakeClient:ext::cache failed to build target table ${table} - ${err.message}`);
+                const { url, table, delimiter = ',', partitionKey, rowKey } = props;
+                const { DATALAKE_STORAGE_ACCOUNT, DATALAKE_STORAGE_ACCOUNT_KEY } = process.env;
+                if (!url)
+                    throw Error('argue a url.');
+                if (typeof DATALAKE_STORAGE_ACCOUNT !== "string" || !DATALAKE_STORAGE_ACCOUNT.length)
+                    throw Error(`simple_datalake_client::cache failed - missing environment variable DATALAKE_STORAGE_ACCOUNT`);
+                if (typeof DATALAKE_STORAGE_ACCOUNT_KEY !== "string" || !DATALAKE_STORAGE_ACCOUNT_KEY.length)
+                    throw Error(`simple_datalake_client::cache failed - missing environment variable DATALAKE_STORAGE_ACCOUNT_KEY`);
+                const credential = new data_tables_1.TablesSharedKeyCredential(DATALAKE_STORAGE_ACCOUNT, DATALAKE_STORAGE_ACCOUNT_KEY);
+                const serviceClient = new data_tables_1.TableServiceClient(`https://${DATALAKE_STORAGE_ACCOUNT}.table.core.windows.net`, credential);
+                const transactClient = new data_tables_1.TableClient(`https://${DATALAKE_STORAGE_ACCOUNT}.table.core.windows.net`, table, credential);
+                try {
+                    yield serviceClient.createTable(table);
                 }
-            }
-            let numRowsInserted = 0;
-            try {
-                yield this.map({
-                    url,
-                    mapper: (row, i) => __awaiter(this, void 0, void 0, function* () {
-                        let result;
-                        try {
-                            row.PartitionKey = typeof partitionKey === 'function'
-                                ? partitionKey(row)
-                                : row[partitionKey];
-                            row.RowKey = typeof rowKey === 'function'
-                                ? rowKey(row)
-                                : row[rowKey];
-                            result = yield transactClient.createEntity(row);
-                            numRowsInserted++;
-                        }
-                        catch (err) {
-                            yield serviceClient.deleteTable(table);
-                            return reject(`Purged table ${table} - data extraction failed - ${err.message}`);
-                        }
-                    })
-                }, parserOptions);
+                catch (err) {
+                    switch (err.statusCode) {
+                        case 409: //table already exists
+                            try {
+                                yield serviceClient.deleteTable(table);
+                                //azure wont allow you to create a table you've recently deleted for about 20 seconds.
+                                //attempting to do so produces an error indicating it is in the process of deleting.
+                                yield new Promise(r => setTimeout(e => r(true), 45000));
+                                yield serviceClient.createTable(table);
+                            }
+                            catch (err) {
+                                return reject(`SimpleDatalakeClient:ext::cache has failed replacing table ${table} - ${err.message}`);
+                            }
+                            break;
+                        default:
+                            return reject(`SimpleDatalakeClient:ext::cache failed to build target table ${table} - ${err.message}`);
+                    }
+                }
+                let numRowsInserted = 0;
+                try {
+                    yield this.map({
+                        url,
+                        mapper: (row, i) => __awaiter(this, void 0, void 0, function* () {
+                            let result;
+                            try {
+                                row.PartitionKey = typeof partitionKey === 'function'
+                                    ? partitionKey(row)
+                                    : row[partitionKey];
+                                row.RowKey = typeof rowKey === 'function'
+                                    ? rowKey(row)
+                                    : row[rowKey];
+                                result = yield transactClient.createEntity(row);
+                                numRowsInserted++;
+                            }
+                            catch (err) {
+                                yield serviceClient.deleteTable(table);
+                                return reject(`Purged table ${table} - data extraction failed - ${err.message}`);
+                            }
+                        })
+                    }, parserOptions);
+                }
+                catch (err) {
+                    reject(err);
+                }
+                return resolve({
+                    numRowsInserted
+                });
             }
             catch (err) {
-                reject(err);
+                reject(`SimpleDatalakeClient::ext.cache has failed - ${err.message}`);
             }
-            return resolve({
-                numRowsInserted
-            });
         }));
     }
 }
