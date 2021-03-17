@@ -72,6 +72,7 @@ describe(`Datalake client tests`, function() {
             let result;
 
             it(`Invokes the method`, () => {
+
                 result = instance._parseURL(testURL);
             });
 
@@ -490,14 +491,15 @@ describe(`Datalake client tests`, function() {
                     url: validURL,
                     table: 'brenstest',
                     partitionKey: 'planning_account',
-                    rowKey: row =>  crypto.createHash('md5').update(JSON.stringify(row)).digest("hex")
+                    rowKey: row =>  crypto.createHash('md5').update(JSON.stringify(row)).digest("hex"),
+                    replaceIfExists:true
                 }, {delimiter:'|'});
 
-                const count = await instance.ext.count({url: validURL}, {delimiter:'|'})
+                const count = await instance.ext.count({url: validURL}, {delimiter:'|', headers: true})
                 assert(count === result.numRowsInserted, 'failed');
             });
 
-            it.only(`Errors appropriately`, () => {
+            it(`Errors appropriately`, () => {
                
                 const instance = new AzureDatalakeClient();
 

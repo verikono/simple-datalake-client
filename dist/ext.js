@@ -48,46 +48,51 @@ class AzureDatalakeExt {
      */
     reduce(props, parserOptions = {}) {
         return new Promise((resolve, reject) => __awaiter(this, void 0, void 0, function* () {
-            const { url, reducer } = props;
-            let { accumulator } = props, i = 0, keys;
-            parserOptions['key_values'] = parserOptions['key_values'] === undefined
-                ? true : parserOptions['key_values'];
-            let stream;
             try {
-                stream = yield this.client.readableStream({ url });
-                if (url.substr(-2) === 'gz')
-                    stream = stream.pipe(zlib.createGunzip());
-            }
-            catch (err) {
-                return reject(err);
-            }
-            stream_1.pipeline(stream, parse_1.parse(parserOptions)
-                .on('data', data => {
+                const { url, reducer } = props;
+                let { accumulator } = props, i = 0, keys;
+                parserOptions['key_values'] = parserOptions['key_values'] === undefined
+                    ? true : parserOptions['key_values'];
+                let stream;
                 try {
-                    if (parserOptions['key_values']) {
-                        if (i === 0 && !keys) {
-                            keys = data;
-                            return;
-                        }
-                        const keyed_data = keys.reduce((acc, key, i) => {
-                            acc[key] = data[i];
-                            return acc;
-                        }, {});
-                        accumulator = reducer(accumulator, keyed_data, i);
-                    }
-                    else {
-                        accumulator = reducer(accumulator, data, i);
-                    }
+                    stream = yield this.client.readableStream({ url });
+                    if (url.substr(-2) === 'gz')
+                        stream = stream.pipe(zlib.createGunzip());
                 }
                 catch (err) {
-                    throw err;
+                    return reject(err);
                 }
-            })
-                .on('error', err => {
-                return reject(err);
-            })
-                .on('end', () => resolve(accumulator)), err => reject);
-            return accumulator;
+                stream_1.pipeline(stream, parse_1.parse(parserOptions)
+                    .on('data', data => {
+                    try {
+                        if (parserOptions['key_values']) {
+                            if (i === 0 && !keys) {
+                                keys = data;
+                                return;
+                            }
+                            const keyed_data = keys.reduce((acc, key, i) => {
+                                acc[key] = data[i];
+                                return acc;
+                            }, {});
+                            accumulator = reducer(accumulator, keyed_data, i);
+                        }
+                        else {
+                            accumulator = reducer(accumulator, data, i);
+                        }
+                    }
+                    catch (err) {
+                        throw err;
+                    }
+                })
+                    .on('error', err => {
+                    return reject(err);
+                })
+                    .on('end', () => resolve(accumulator)), err => reject);
+                return accumulator;
+            }
+            catch (err) {
+                return reject(Error(`SimpleDatalakeClient::ext.reduce has failed - ${err.message}`));
+            }
         }));
     }
     /**
@@ -100,46 +105,51 @@ class AzureDatalakeExt {
     map(props, parserOptions = {}) {
         return __awaiter(this, void 0, void 0, function* () {
             return new Promise((resolve, reject) => __awaiter(this, void 0, void 0, function* () {
-                const { url } = props;
-                let { mapper } = props, i = 0, promises = [], keys;
-                parserOptions['key_values'] = parserOptions['key_values'] === undefined
-                    ? true : parserOptions['key_values'];
-                let stream;
                 try {
-                    stream = yield this.client.readableStream({ url });
-                    if (url.substr(-2) === 'gz')
-                        stream = stream.pipe(zlib.createGunzip());
-                }
-                catch (err) {
-                    return reject(err);
-                }
-                try {
-                    stream_1.pipeline(stream, parse_1.parse(parserOptions)
-                        .on('data', data => {
-                        if (parserOptions['key_values']) {
-                            if (i === 0 && !keys) {
-                                keys = data;
-                                return;
+                    const { url } = props;
+                    let { mapper } = props, i = 0, promises = [], keys;
+                    parserOptions['key_values'] = parserOptions['key_values'] === undefined
+                        ? true : parserOptions['key_values'];
+                    let stream;
+                    try {
+                        stream = yield this.client.readableStream({ url });
+                        if (url.substr(-2) === 'gz')
+                            stream = stream.pipe(zlib.createGunzip());
+                    }
+                    catch (err) {
+                        return reject(err);
+                    }
+                    try {
+                        stream_1.pipeline(stream, parse_1.parse(parserOptions)
+                            .on('data', data => {
+                            if (parserOptions['key_values']) {
+                                if (i === 0 && !keys) {
+                                    keys = data;
+                                    return;
+                                }
+                                const keyed_data = keys.reduce((acc, key, i) => {
+                                    acc[key] = data[i];
+                                    return acc;
+                                }, {});
+                                promises.push(mapper(keyed_data, i));
                             }
-                            const keyed_data = keys.reduce((acc, key, i) => {
-                                acc[key] = data[i];
-                                return acc;
-                            }, {});
-                            promises.push(mapper(keyed_data, i));
-                        }
-                        else {
-                            promises.push(mapper(data, i));
-                            i++;
-                        }
-                    })
-                        .on('error', reject)
-                        .on('end', () => __awaiter(this, void 0, void 0, function* () {
-                        const result = yield Promise.all(promises);
-                        resolve(result);
-                    })), err => reject);
+                            else {
+                                promises.push(mapper(data, i));
+                                i++;
+                            }
+                        })
+                            .on('error', reject)
+                            .on('end', () => __awaiter(this, void 0, void 0, function* () {
+                            const result = yield Promise.all(promises);
+                            resolve(result);
+                        })), err => reject);
+                    }
+                    catch (err) {
+                        return reject(err);
+                    }
                 }
                 catch (err) {
-                    return reject(err);
+                    reject(Error(`SimpleDatalakeClient::ext.map has failed ${err.message}`));
                 }
             }));
         });
@@ -268,24 +278,27 @@ class AzureDatalakeExt {
     }
     /**
      * Get the number of rows in this datafile
+     *
+     * Remember, this will count the headers unless the parserOptions has headers set to false.
+     *
      * @param props
+     * @param parserOptions @see https://c2fo.github.io/fast-csv/docs/parsing/options/
      */
     count(props, parserOptions = {}) {
         return __awaiter(this, void 0, void 0, function* () {
             return new Promise((resolve, reject) => __awaiter(this, void 0, void 0, function* () {
-                const { url } = props;
-                let stream, i = 0;
                 try {
+                    const { url } = props;
+                    let stream, i = 0, headersIgnored = false;
                     stream = yield this.client.readableStream({ url });
                     if (url.substr(-2) === 'gz')
                         stream = stream.pipe(zlib.createGunzip());
-                }
-                catch (err) {
-                    return reject(err);
-                }
-                try {
                     stream_1.pipeline(stream, parse_1.parse(parserOptions)
                         .on('data', data => {
+                        // if(parserOptions.headers && !headersIgnored) {
+                        //     headersIgnored = true;
+                        //     return;
+                        // }
                         i++;
                     })
                         .on('error', err => {
@@ -299,12 +312,14 @@ class AzureDatalakeExt {
                     });
                 }
                 catch (err) {
-                    console.log('>>>');
+                    reject(Error(`SimpleDatalakeClient::ext.count has failed ${err.message}`));
                 }
             }));
         });
     }
     /**
+     * Cache a CSV file to a azure storage table.
+     *
      * Temporary solution for a project i'm on that uses azure storage but will migrate to datalake tables, so we'll replace this very shortly.
      * Due to the lack of AAD support with azure storage tables this is going to be a bit ugly so the faster we move to datalake tables the better.
      *
@@ -313,42 +328,56 @@ class AzureDatalakeExt {
      * @param props.table string the target tablename
      * @param props.partitionKey string the field to use for a partiton key
      * @param props.rowKey string the field to use for the row key
-     *
+     * @param props.replaceIfExists boolean replace the table if one exists (this suffers waiting around in the azure queue), default false
+     * @param parserOptions
      * @todo allow paritionKey and rowKey to be argued as a function.
      */
     cache(props, parserOptions = {}) {
         return new Promise((resolve, reject) => __awaiter(this, void 0, void 0, function* () {
             try {
-                const { url, table, delimiter = ',', partitionKey, rowKey } = props;
-                const { DATALAKE_STORAGE_ACCOUNT, DATALAKE_STORAGE_ACCOUNT_KEY } = process.env;
+                const { url, table, delimiter = ',', partitionKey, rowKey, replacei } = props;
+                let { replaceIfExists } = props;
+                replaceIfExists = replaceIfExists === undefined ? false : replaceIfExists;
+                const { STORAGE_ACCOUNT, STORAGE_ACCOUNT_KEY } = process.env;
                 if (!url)
                     throw Error('argue a url.');
-                if (typeof DATALAKE_STORAGE_ACCOUNT !== "string" || !DATALAKE_STORAGE_ACCOUNT.length)
-                    throw Error(`simple_datalake_client::cache failed - missing environment variable DATALAKE_STORAGE_ACCOUNT`);
-                if (typeof DATALAKE_STORAGE_ACCOUNT_KEY !== "string" || !DATALAKE_STORAGE_ACCOUNT_KEY.length)
-                    throw Error(`simple_datalake_client::cache failed - missing environment variable DATALAKE_STORAGE_ACCOUNT_KEY`);
-                const credential = new data_tables_1.TablesSharedKeyCredential(DATALAKE_STORAGE_ACCOUNT, DATALAKE_STORAGE_ACCOUNT_KEY);
-                const serviceClient = new data_tables_1.TableServiceClient(`https://${DATALAKE_STORAGE_ACCOUNT}.table.core.windows.net`, credential);
-                const transactClient = new data_tables_1.TableClient(`https://${DATALAKE_STORAGE_ACCOUNT}.table.core.windows.net`, table, credential);
+                if (typeof STORAGE_ACCOUNT !== "string" || !STORAGE_ACCOUNT.length)
+                    throw Error(`simple_datalake_client::cache failed - missing environment variable STORAGE_ACCOUNT`);
+                if (typeof STORAGE_ACCOUNT_KEY !== "string" || !STORAGE_ACCOUNT_KEY.length)
+                    throw Error(`simple_datalake_client::cache failed - missing environment variable STORAGE_ACCOUNT_KEY`);
+                const credential = new data_tables_1.TablesSharedKeyCredential(STORAGE_ACCOUNT, STORAGE_ACCOUNT_KEY);
+                const serviceClient = new data_tables_1.TableServiceClient(`https://${STORAGE_ACCOUNT}.table.core.windows.net`, credential);
+                const transactClient = new data_tables_1.TableClient(`https://${STORAGE_ACCOUNT}.table.core.windows.net`, table, credential);
                 try {
                     yield serviceClient.createTable(table);
                 }
                 catch (err) {
-                    switch (err.statusCode) {
-                        case 409: //table already exists
-                            try {
-                                yield serviceClient.deleteTable(table);
-                                //azure wont allow you to create a table you've recently deleted for about 20 seconds.
-                                //attempting to do so produces an error indicating it is in the process of deleting.
-                                yield new Promise(r => setTimeout(e => r(true), 45000));
-                                yield serviceClient.createTable(table);
-                            }
-                            catch (err) {
-                                return reject(`SimpleDatalakeClient:ext::cache has failed replacing table ${table} - ${err.message}`);
-                            }
-                            break;
-                        default:
-                            return reject(`SimpleDatalakeClient:ext::cache failed to build target table ${table} - ${err.message}`);
+                    if (err.message.includes('TableBeingDeleted')) {
+                        console.warn(`table ${table} is queued for deletion by azure, retrying momentarily...`);
+                        yield new Promise(r => setTimeout(() => r(true), 2000));
+                        let result;
+                        try {
+                            result = yield this.cache(props, parserOptions);
+                        }
+                        catch (err) {
+                            return reject(err);
+                        }
+                        return resolve(result);
+                    }
+                    else if (err.message.includes('TableAlreadyExists') && replaceIfExists) {
+                        console.warn(`table ${table} exists - dropping by request.`);
+                        yield serviceClient.deleteTable(table);
+                        let result;
+                        try {
+                            result = yield this.cache(props, parserOptions);
+                        }
+                        catch (err) {
+                            return reject(err);
+                        }
+                        return resolve(result);
+                    }
+                    else {
+                        return reject(Error(`SimpleDatalakeClient:ext::cache failed to build target table ${table} - ${err.message}`));
                     }
                 }
                 let numRowsInserted = 0;
@@ -369,7 +398,7 @@ class AzureDatalakeExt {
                             }
                             catch (err) {
                                 yield serviceClient.deleteTable(table);
-                                return reject(`Purged table ${table} - data extraction failed - ${err.message}`);
+                                return reject(Error(`Purged table ${table} - data extraction failed - ${err.message}`));
                             }
                         })
                     }, parserOptions);
@@ -382,7 +411,7 @@ class AzureDatalakeExt {
                 });
             }
             catch (err) {
-                reject(`SimpleDatalakeClient::ext.cache has failed - ${err.message}`);
+                reject(Error(`SimpleDatalakeClient::ext.cache has failed ${err.message}`));
             }
         }));
     }
