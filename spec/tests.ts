@@ -524,11 +524,15 @@ describe(`Datalake client tests`, function() {
                     url: validURL,
                     table: tableName,
                     partitionKey: 'planning_account',
-                    rowKey: row => crypto.createHash('md5').update(JSON.stringify(row)).digest('hex'),
+                    rowKey: row => {
+                        return crypto.createHash('md5').update(JSON.stringify(row)).digest('hex');
+                    },
                     replaceIfExists:true,
                     types: {
-                        max_discount: "number",
-                        super_category: "string"
+                        max_discount: "float",
+                        super_category: "string",
+                        min_duration_block: "boolean",
+                        min_discount_display: "bigint"
                     }
                 },
                 {
@@ -542,6 +546,8 @@ describe(`Datalake client tests`, function() {
                 assert(result.length === numRowsInserted, 'failed');
                 assert(result.every(row => typeof row.max_discount === 'number'), 'failed');
                 assert(result.every(row => typeof row.super_category === 'string'), 'failed');
+
+                await tables.drop({table: tableName});
 
             });
 

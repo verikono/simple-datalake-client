@@ -430,7 +430,7 @@ export class AzureDatalakeExt {
      * @param props.partitionKey string the field to use for a partiton key
      * @param props.rowKey string the field to use for the row key
      * @param props.replaceIfExists boolean replace the table if one exists (this suffers waiting around in the azure queue), default false
-     * @param props.types object a key value object where the key is the property name and the value is the type - eg { field_one: "number", field_two: "string" }
+     * @param props.types object a key value object where the key is the property name and the value is the Odata Edm type - eg { field_one: "double", field_two: "Int32" }
      * @param parserOptions
      * @todo allow paritionKey and rowKey to be argued as a function.  
      */
@@ -559,8 +559,10 @@ export class AzureDatalakeExt {
 /**
  * Allows recasting of a keyword object's values. Useful being our parser will always return strings for its values.
  * 
+ * of note: cannot think of a use case for the BINARY Edm Type so it is excluded at this point.
+ * 
  * @param obj Object a keywork object
- * @param definitions Object a keyword object where the key is a property in the obj param and the value is a type specified as a string - eg "number"
+ * @param definitions Object a keyword object where the key is a property in the obj param and the value is a valid odata Edm type specified as a string - eg "DOUBLE" valid types are "Boolean" | "DateTime" | "Double" | "Guid" | "Int32" | "Int64" | "String"
  * 
  * @returns Object with values recast as specified by the defintions. 
  */
@@ -573,21 +575,71 @@ function _castKeywordObject( obj, definitions ) {
             return acc;
         }
 
-        switch(definitions[key]) {
+        if(!obj.hasOwnProperty(key)) {
+            console.warn(`SimpleDatalakClient::_castKeywordObject - invalid key ${key} does not exist on the argued object - skipping...`);
+            return acc;
+        }
 
-            //azure keeps this really simple.
+        switch(definitions[key].toLowerCase()) {
+
             case 'number':
-            case 'float':
-            case 'integer':
+                //let azure tables guess in this case.
                 acc[key] = parseFloat(obj[key].toString());
                 break;
 
+            case 'double':
+            case 'float':
+                acc[key] = {
+                    type: "Double",
+                    value: parseFloat(obj[key].toString())
+                }
+                break;
+
+            case 'integer':
+            case 'int':
+            case 'int32':
+                acc[key] = {
+                    type: "Int32",
+                    value: parseInt(obj[key].toString())
+                }
+                break;
+
+            case 'bigint':
+                try {
+                    acc[key] = {
+                        type: "Int64",
+                        value: BigInt(obj[key].toString()).toString()
+                    }
+                }
+                catch( err ) {
+                    if(err.message.includes("Cannot convert") && obj[key].toString().includes('.')) {
+                        
+                        console.warn(`impleDatalakClient::_castKeywordObject received a value [${obj[key]}] which cannot be cast to a BigInt, resolving by clipping the decimal digits`);
+                        const rational = obj[key].split('.')[0];
+                        acc[key] = {
+                            type: "Int64",
+                            value: BigInt(rational).toString()
+                        }
+                    }
+                } 
+                break;
+
             case 'string':
-                acc[key] = obj[key].toString();
+                acc[key] = {
+                    type: "String",
+                    value: obj[key].toString()
+                }
+                break;
+
+            case 'boolean':
+                acc[key] = {
+                    type: "Boolean",
+                    value: !!obj[key]
+                }
                 break;
 
             default:
-                throw Error(`SimpleDatalakClient::_castKeywordObject key "${key}" has invalid type "${definitions[key]}`);
+                throw Error(`SimpleDatalakClient::_castKeywordObject key "${key}" has invalid type "${definitions[key]}"`);
         }
 
         return acc;
