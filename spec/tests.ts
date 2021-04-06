@@ -19,6 +19,10 @@ import {
 } from '@azure/storage-file-datalake';
 
 import {
+    AzureDataTablesClient
+} from 'verikono-azure-datatable-tools';
+
+import {
     AzureDatalakeClient
 } from '../src';
 
@@ -499,6 +503,48 @@ describe(`Datalake client tests`, function() {
                 assert(count === result.numRowsInserted, 'failed');
             });
 
+            it.only(`Caches with types`, async () => {
+
+                const tableName = 'cacheTypesTest'
+                let result;
+
+                const instance = new AzureDatalakeClient();
+                const AZURE_STORAGE_ACCOUNT = process.env.AZURE_STORAGE_ACCOUNT || 'AZURE_STORAGE_ACCOUNT';
+                const AZURE_STORAGE_ACCOUNT_KEY = process.env.AZURE_STORAGE_ACCOUNT_KEY || 'AZURE_STORAGE_ACCOUNT_KEY';
+
+                //@todo remove the global keys once this package is compatible with AzureDefaultCredential.
+                const tables = new AzureDataTablesClient({
+                    global_keys: {
+                        AZURE_STORAGE_ACCOUNT,
+                        AZURE_STORAGE_ACCOUNT_KEY
+                    }
+                });
+
+                result = await instance.ext.cache({
+                    url: validURL,
+                    table: tableName,
+                    partitionKey: 'planning_account',
+                    rowKey: row => crypto.createHash('md5').update(JSON.stringify(row)).digest('hex'),
+                    replaceIfExists:true,
+                    types: {
+                        max_discount: "number",
+                        super_category: "string"
+                    }
+                },
+                {
+                    delimiter: '|'
+                });
+
+                assert(result && result.numRowsInserted > 0, 'failed');
+                const {numRowsInserted} = result;
+
+                result = await tables.rows({table: tableName});
+                assert(result.length === numRowsInserted, 'failed');
+                assert(result.every(row => typeof row.max_discount === 'number'), 'failed');
+                assert(result.every(row => typeof row.super_category === 'string'), 'failed');
+
+            });
+
             it(`Errors appropriately`, () => {
                
                 const instance = new AzureDatalakeClient();
@@ -506,8 +552,8 @@ describe(`Datalake client tests`, function() {
                 return new Promise( async (resolve, reject) => {
 
                     instance.ext.cache({})
-                        .then( result => reject(Error(`Did not throw the expected error`)))
-                        .catch( err => resolve(true))
+                        .then(result => reject(Error(`Did not throw the expected error`)))
+                        .catch(err => resolve(true))
                 });
 
             });

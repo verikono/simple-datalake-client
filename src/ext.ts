@@ -430,6 +430,7 @@ export class AzureDatalakeExt {
      * @param props.partitionKey string the field to use for a partiton key
      * @param props.rowKey string the field to use for the row key
      * @param props.replaceIfExists boolean replace the table if one exists (this suffers waiting around in the azure queue), default false
+     * @param props.types object a key value object where the key is the property name and the value is the type - eg { field_one: "number", field_two: "string" }
      * @param parserOptions
      * @todo allow paritionKey and rowKey to be argued as a function.  
      */
@@ -445,7 +446,7 @@ export class AzureDatalakeExt {
                     delimiter = ',',
                     partitionKey,
                     rowKey,
-                    replacei
+                    types
                 } = props;
 
                 let {
@@ -525,6 +526,8 @@ export class AzureDatalakeExt {
                                 row.RowKey = typeof rowKey === 'function'
                                     ? rowKey(row)
                                     :row[rowKey];
+                                if(types && Object.keys(types).length)
+                                    row = castKeywordObject(row, types);
                                 result = await transactClient.createEntity(row)
                                 numRowsInserted++;
                             } catch( err ) {
@@ -545,10 +548,41 @@ export class AzureDatalakeExt {
             }
             catch( err ) {
 
-                reject(Error(`SimpleDatalakeClient::ext.cache has failed ${err.message}`))
+                reject(Error(`SimpleDatalakeClient::ext.cache has failed ${err.message}`));
             }
 
         })
 
     }
+}
+
+
+function castKeywordObject( obj, definitions ) {
+
+    return Object.keys(obj).reduce((acc, key) => {
+
+        if(!definitions.hasOwnProperty(key)) {
+            acc[key] = obj[key];
+            return acc;
+        }
+
+        switch(definitions[key]) {
+
+            //azure keeps this really simple.
+            case 'number':
+            case 'float':
+            case 'integer':
+                acc[key] = parseFloat(obj[key].toString());
+                break;
+
+            case 'string':
+                acc[key] = obj[key].toString();
+                break;
+
+            default:
+                throw Error(`SimpleDatalakClient::castKeywordObject key "${key}" has invalid type "${definitions[key]}`);
+        }
+
+        return acc;
+    }, {});
 }
