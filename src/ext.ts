@@ -644,9 +644,10 @@ function _castKeywordObject( obj, definitions ) {
                 break;
 
             case 'boolean':
+                value = obj[key] !== '0' && obj[key] !== 'false'
                 acc[key] = {
                     type: "Boolean",
-                    value: (!!obj[key]).toString()
+                    value: value.toString()
                 }
                 break;
 
