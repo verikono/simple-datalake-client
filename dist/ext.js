@@ -395,7 +395,7 @@ class AzureDatalakeExt {
                                     ? rowKey(row)
                                     : row[rowKey];
                                 if (types && Object.keys(types).length)
-                                    row = castKeywordObject(row, types);
+                                    row = _castKeywordObject(row, types);
                                 result = yield transactClient.createEntity(row);
                                 numRowsInserted++;
                             }
@@ -420,7 +420,15 @@ class AzureDatalakeExt {
     }
 }
 exports.AzureDatalakeExt = AzureDatalakeExt;
-function castKeywordObject(obj, definitions) {
+/**
+ * Allows recasting of a keyword object's values. Useful being our parser will always return strings for its values.
+ *
+ * @param obj Object a keywork object
+ * @param definitions Object a keyword object where the key is a property in the obj param and the value is a type specified as a string - eg "number"
+ *
+ * @returns Object with values recast as specified by the defintions.
+ */
+function _castKeywordObject(obj, definitions) {
     return Object.keys(obj).reduce((acc, key) => {
         if (!definitions.hasOwnProperty(key)) {
             acc[key] = obj[key];
@@ -437,7 +445,7 @@ function castKeywordObject(obj, definitions) {
                 acc[key] = obj[key].toString();
                 break;
             default:
-                throw Error(`SimpleDatalakClient::castKeywordObject key "${key}" has invalid type "${definitions[key]}`);
+                throw Error(`SimpleDatalakClient::_castKeywordObject key "${key}" has invalid type "${definitions[key]}`);
         }
         return acc;
     }, {});
