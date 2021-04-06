@@ -7,7 +7,7 @@
         {
             "type": "node",
             "request": "launch",
-            "name": "Perform Python Tests",
+            "name": "Perform Unit Tests",
             "program": "${workspaceFolder}/node_modules/mocha/bin/_mocha",
             "runtimeArgs": ["-r", "ts-node/register"],
             "args": [
