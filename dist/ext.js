@@ -440,24 +440,35 @@ function _castKeywordObject(obj, definitions) {
             console.warn(`SimpleDatalakClient::_castKeywordObject - invalid key ${key} does not exist on the argued object - skipping...`);
             return acc;
         }
+        let value;
         switch (definitions[key].toLowerCase()) {
             case 'number':
                 //let azure tables guess in this case.
-                acc[key] = parseFloat(obj[key].toString());
+                acc[key] = parseFloat(obj[key].toString()).toString();
                 break;
             case 'double':
             case 'float':
+                value = parseFloat(obj[key].toString());
+                //for azure tables not including the key at all is assigning a null when reading rows back and is done because the datatables
+                //library can't handle the fact null is an object in javascript.
+                if (isNaN(value))
+                    break;
                 acc[key] = {
                     type: "Double",
-                    value: parseFloat(obj[key].toString())
+                    value: value.toString()
                 };
                 break;
             case 'integer':
             case 'int':
             case 'int32':
+                value = parseInt(obj[key].toString());
+                //for azure tables not including the key at all is assigning a null when reading rows back and is done because the datatables
+                //library can't handle the fact null is an object in javascript.
+                if (isNaN(value))
+                    break;
                 acc[key] = {
                     type: "Int32",
-                    value: parseInt(obj[key].toString())
+                    value: value.toString()
                 };
                 break;
             case 'bigint':
@@ -487,7 +498,7 @@ function _castKeywordObject(obj, definitions) {
             case 'boolean':
                 acc[key] = {
                     type: "Boolean",
-                    value: !!obj[key]
+                    value: !!obj[key].toString()
                 };
                 break;
             default:
