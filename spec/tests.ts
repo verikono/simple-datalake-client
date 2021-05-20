@@ -43,7 +43,8 @@ describe(`Datalake client tests`, function() {
     const validURL = process.env.TEST_VALID_URL;
     const validURL_BIG = process.env.TEST_VALID_URL_BIG;
     const validURL_ZIPPED = process.env.TEST_VALID_URL_ZIPPED;
-    const validURL_BIG_ZIPPED = process.env.TEST_VALID_URL_BIG_ZIPPED
+    const validURL_BIG_ZIPPED = process.env.TEST_VALID_URL_BIG_ZIPPED;
+    const validURL_WITH_EMPTY_COLUMNS = process.env.TEST_VALID_URL_WITH_EMPTY_COLUMNS;
     const validURLNotExists = validURL.split('/').slice(0, -1).concat('nofilenoway.csv').join('/')
 
     describe(`Setup`, () => {
@@ -588,11 +589,11 @@ describe(`Datalake client tests`, function() {
                 assert(totalRows === cnt-1, 'failed');
             });
 
-            it.only(`invokes mapSlices and nullifies empty columns`, async () => {
+            it(`invokes mapSlices and nullifies empty columns`, async () => {
 
                 const instance = new AzureDatalakeClient();
 
-                const url = 'https://nusatradeadl.blob.core.windows.net/simulation-service/scenario-results/bnorris@enterrasolutions.com/516f18470cdd41e4acb749881dcca8aa/COFFEE PARTNERS/output/optimized_simulated.csv.gz';
+                const url = validURL_WITH_EMPTY_COLUMNS;
                 const exists = await instance.exists({url});
                 if(!exists)
                     throw Error(`Test file does not exist`);
@@ -622,6 +623,24 @@ describe(`Datalake client tests`, function() {
                 assert(nullFoundInData && !nullFoundInControl, 'failed');
             })
         });
+
+        describe(`get`, () => {
+
+            it.only(`invokes get on a valid URL`, async () => {
+
+                const instance = new AzureDatalakeClient();
+
+                const url = validURL_WITH_EMPTY_COLUMNS;
+                const exists = await instance.exists({url});
+                if(!exists)
+                    throw Error(`Test file does not exist`);
+
+                const result = await instance.ext.get({url});
+
+                assert(result && Array.isArray(result) && result.length, 'failed');
+            });
+
+        })
 
     });
 

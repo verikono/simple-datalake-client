@@ -39,6 +39,12 @@ class AzureDatalakeExt {
         const { client } = props;
         this.client = client;
     }
+    get(props, parserOptions = {}) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const { url } = props;
+            return this.mapSlices({ url, mapper: data => data }, parserOptions);
+        });
+    }
     /**
      *
      * @param props the property object

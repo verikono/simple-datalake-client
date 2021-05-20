@@ -21,6 +21,12 @@ export class AzureDatalakeExt {
         this.client = client;
     }
 
+    async get( props, parserOptions:I.ExtendedParserOptionsArgs={} ):Promise<Array<any>> {
+
+        const { url } = props;
+        return this.mapSlices({ url, mapper: data => data}, parserOptions)
+    }
+
     /**
      * 
      * @param props the property object
