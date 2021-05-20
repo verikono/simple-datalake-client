@@ -1,6 +1,7 @@
 import {
     DataLakeServiceClient
 } from '@azure/storage-file-datalake';
+import {ParserOptionsArgs} from '@fast-csv/parse';
 
 export type protocol = 'http'|'https'
 export interface serviceClients {
@@ -91,4 +92,10 @@ export interface extReduceProps {
 
 export interface extCacheReturn {
     numRowsInserted: number;
+}
+
+
+
+export interface ExtendedParserOptionsArgs extends ParserOptionsArgs {
+    nullifyEmptyColumns?:boolean;
 }

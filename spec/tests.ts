@@ -503,7 +503,7 @@ describe(`Datalake client tests`, function() {
                 assert(count === result.numRowsInserted, 'failed');
             });
 
-            it.only(`Caches with types`, async () => {
+            it(`Caches with types`, async () => {
 
                 const tableName = 'cacheTypesTest'
                 let result;
@@ -568,9 +568,9 @@ describe(`Datalake client tests`, function() {
 
         describe(`mapSlices`, () => {
 
-            const instance = new AzureDatalakeClient();
-
             it(`invokes mapSlices on `, async () => {
+
+                const instance = new AzureDatalakeClient();
 
                 const slicesize = 50;
                 const cnt = await instance.ext.count({url: validURL});
@@ -588,6 +588,39 @@ describe(`Datalake client tests`, function() {
                 assert(totalRows === cnt-1, 'failed');
             });
 
+            it.only(`invokes mapSlices and nullifies empty columns`, async () => {
+
+                const instance = new AzureDatalakeClient();
+
+                const url = 'https://nusatradeadl.blob.core.windows.net/simulation-service/scenario-results/bnorris@enterrasolutions.com/516f18470cdd41e4acb749881dcca8aa/COFFEE PARTNERS/output/optimized_simulated.csv.gz';
+                const exists = await instance.exists({url});
+                if(!exists)
+                    throw Error(`Test file does not exist`);
+
+                const control = await instance.ext.mapSlices({
+                    url,
+                    mapper: (rows, i) => {
+                        return rows;
+                    }
+                }, { delimiter:'|'});
+
+                const result = await instance.ext.mapSlices({
+                    url,
+                    mapper: (rows, i) => {
+                        return rows;
+                    }
+                }, { delimiter:'|', nullifyEmptyColumns:true});
+
+                const nullFoundInControl = control.some(row => {
+                    return Object.values(row).some(value => value === null)
+                });
+
+                const nullFoundInData = result.some(row => {
+                    return Object.values(row).some(value => value === null)
+                });
+
+                assert(nullFoundInData && !nullFoundInControl, 'failed');
+            })
         });
 
     });

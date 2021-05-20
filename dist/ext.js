@@ -220,12 +220,12 @@ class AzureDatalakeExt {
      * @param props the argument object
      * @param props.mapper the mapping function
      * @param props.size the size of each slice, default: 1000;
-     * @param parserOptions
+     * @param parserOptions - see https://c2fo.github.io/fast-csv/docs/parsing/options for available options.
      */
     mapSlices(props, parserOptions = {}) {
         return new Promise((resolve, reject) => __awaiter(this, void 0, void 0, function* () {
             const { url, mapper } = props;
-            let i = 0, size, slice = [], promises = [], keys;
+            let i = 0, size, slice = [], promises = [], keys, result = [];
             size = props.size || 1000;
             parserOptions['key_values'] = parserOptions['key_values'] === undefined
                 ? true : parserOptions['key_values'];
@@ -247,10 +247,19 @@ class AzureDatalakeExt {
                             return;
                         }
                         const keyed_data = keys.reduce((acc, key, i) => {
+                            if (parserOptions['nullifyEmptyColumns'] && typeof data[i] === 'string' && !data[i].length)
+                                data[i] = null;
                             acc[key] = data[i];
                             return acc;
                         }, {});
                         data = keyed_data;
+                    }
+                    else {
+                        data = data.map(value => {
+                            if (parserOptions['nullifyEmptyColumns'] && typeof value === 'string' && !value.length)
+                                value = null;
+                            return value;
+                        });
                     }
                     slice.push(data);
                     if (slice.length !== size)
@@ -265,9 +274,10 @@ class AzureDatalakeExt {
                         const ret = mapper(slice);
                         if (ret instanceof Promise)
                             promises.push(ret);
+                        result = result.concat(ret);
                     }
                     yield Promise.all(promises);
-                    resolve(true);
+                    resolve(result);
                 }))
                     .on('error', err => reject), err => reject);
             }
