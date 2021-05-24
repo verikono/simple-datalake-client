@@ -355,16 +355,16 @@ class AzureDatalakeExt {
                 const { url, table, delimiter = ',', partitionKey, rowKey, types } = props;
                 let { replaceIfExists } = props;
                 replaceIfExists = replaceIfExists === undefined ? false : replaceIfExists;
-                const { STORAGE_ACCOUNT, STORAGE_ACCOUNT_KEY } = process.env;
+                const { AZURE_STORAGE_ACCOUNT, AZURE_STORAGE_ACCOUNT_KEY } = process.env;
                 if (!url)
                     throw Error('argue a url.');
-                if (typeof STORAGE_ACCOUNT !== "string" || !STORAGE_ACCOUNT.length)
+                if (typeof AZURE_STORAGE_ACCOUNT !== "string" || !AZURE_STORAGE_ACCOUNT.length)
                     throw Error(`simple_datalake_client::cache failed - missing environment variable STORAGE_ACCOUNT`);
-                if (typeof STORAGE_ACCOUNT_KEY !== "string" || !STORAGE_ACCOUNT_KEY.length)
+                if (typeof AZURE_STORAGE_ACCOUNT_KEY !== "string" || !AZURE_STORAGE_ACCOUNT_KEY.length)
                     throw Error(`simple_datalake_client::cache failed - missing environment variable STORAGE_ACCOUNT_KEY`);
-                const credential = new data_tables_1.TablesSharedKeyCredential(STORAGE_ACCOUNT, STORAGE_ACCOUNT_KEY);
-                const serviceClient = new data_tables_1.TableServiceClient(`https://${STORAGE_ACCOUNT}.table.core.windows.net`, credential);
-                const transactClient = new data_tables_1.TableClient(`https://${STORAGE_ACCOUNT}.table.core.windows.net`, table, credential);
+                const credential = new data_tables_1.TablesSharedKeyCredential(AZURE_STORAGE_ACCOUNT, AZURE_STORAGE_ACCOUNT_KEY);
+                const serviceClient = new data_tables_1.TableServiceClient(`https://${AZURE_STORAGE_ACCOUNT}.table.core.windows.net`, credential);
+                const transactClient = new data_tables_1.TableClient(`https://${AZURE_STORAGE_ACCOUNT}.table.core.windows.net`, table, credential);
                 try {
                     yield serviceClient.createTable(table);
                 }
@@ -394,7 +394,7 @@ class AzureDatalakeExt {
                         return resolve(result);
                     }
                     else {
-                        return reject(Error(`SimpleDatalakeClient:ext::cache failed to build target table ${table} using credentials [${STORAGE_ACCOUNT}][${STORAGE_ACCOUNT_KEY}] ${err.message}`));
+                        return reject(Error(`SimpleDatalakeClient:ext::cache failed to build target table ${table} using credentials [${AZURE_STORAGE_ACCOUNT}][${AZURE_STORAGE_ACCOUNT_KEY}] ${err.message}`));
                     }
                 }
                 let numRowsInserted = 0;
