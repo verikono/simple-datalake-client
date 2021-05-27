@@ -120,6 +120,7 @@ class AzureDatalakeClient {
      * Save a file to local storage
      *
      * @param props the argument object
+     * @param props.url the target url for the contents
      * @param props.file filepath relative to the runtime root, default is the filename at project root.
      *
      * @returns Promise<boolean>
@@ -146,13 +147,33 @@ class AzureDatalakeClient {
         });
     }
     /**
-     * Upload a data to a file/blob at a specific URL
+     * Upload data to a file/blob at a specific URL
      *
-     * @param props the argument object
-     * @param props.url the target URL of this file upload.
+     * @param props Object the argument object
+     * @param props.url String the target URL of this file upload.
+     * @param props.content String the file contents
+     * @param props.overwrite Boolean overwrite existing data at the url. Default False.
+     *
+     * @todo replace this flush mechanism with a ReadWriteStream as to make large uploads happy.
      */
     put(props) {
-        const { url } = props;
+        return __awaiter(this, void 0, void 0, function* () {
+            try {
+                const { url, content, overwrite } = props;
+                if (!overwrite && (yield this.exists({ url })))
+                    throw Error(`File exists at url - ${url}`);
+                const client = this.getFileClient({ url });
+                yield client.create();
+                yield client.append(content, 0, content.length);
+                yield client.flush(content.length);
+                return true;
+            }
+            catch (err) {
+                if (err.code === 'AuthorizationPermissionMismatch')
+                    throw Error(`AzureDatalakeClient::put has failed due to a permissions issue - ${err.message}`);
+                throw Error(`AzureDatalakeClient::put failed - ${err.message}`);
+            }
+        });
     }
     /**
      * Set a path as the root directory for all uploads and downloads.

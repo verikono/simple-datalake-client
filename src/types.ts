@@ -80,21 +80,28 @@ export interface saveProps {
     file: string;
 }
 
-export interface uploadProps {
+export interface putProps {
     url: string;
+    content: string;
+    overwrite?: boolean;
 }
 
 export interface extReduceProps {
     url: string;
     reducer: Function; //the fuction processed on each row, returning a new value for the accumulator
     accumulator?: any; //initial value, altered from every return of the reducer.
+    persist?: boolean;
 }
 
 export interface extCacheReturn {
     numRowsInserted: number;
 }
 
-
+export interface extMapProps {
+    url: string;
+    mapper: Function;
+    persist?: boolean;
+}
 
 export interface ExtendedParserOptionsArgs extends ParserOptionsArgs {
     nullifyEmptyColumns?:boolean;

@@ -32,6 +32,7 @@ exports.AzureDatalakeExt = void 0;
 const parse_1 = require("@fast-csv/parse");
 const stream_1 = require("stream");
 const zlib = __importStar(require("zlib"));
+const os_1 = require("os");
 const data_tables_1 = require("@azure/data-tables");
 class AzureDatalakeExt {
     constructor(props) {
@@ -39,6 +40,15 @@ class AzureDatalakeExt {
         const { client } = props;
         this.client = client;
     }
+    /**
+     * Download and parse a CSV to memory
+     *
+     * @param props Object the argument keyword object
+     * @param props.url String the url
+     * @param parserOptions ExtendedParserOptionsArgs parser options.
+     *
+     * @returns Promise with a parsed CSV (ie an array of the rows)
+     */
     get(props, parserOptions = {}) {
         return __awaiter(this, void 0, void 0, function* () {
             const { url } = props;
@@ -46,10 +56,12 @@ class AzureDatalakeExt {
         });
     }
     /**
+     * Perform a reduce operation upon a stored CSV file in the datalake, optionally storing and overwriting the result.
      *
      * @param props the property object
      * @param props.url the url of the data to perform this reduce upon.
      * @param props.reducer Function called on each row
+     * @param props.persist Boolean persist the result back upon the file. Default false.
      * @param parserOptions - see https://c2fo.github.io/fast-csv/docs/parsing/options for available options such as skipping headers, or objectmode
      */
     reduce(props, parserOptions = {}) {
@@ -102,10 +114,12 @@ class AzureDatalakeExt {
         }));
     }
     /**
+     * Map through a stored CSV file in the datalake, optionally storing and overwriting the result.
      *
      * @param props the property object
      * @param props.url the url of the CSV file we'll be mapping over.
-     * @param props.eachRow Function called on each row
+     * @param props.mapper Function called on each row
+     * @param props.persist Boolean persist the result back upon the file. Default: false.
      * @param parserOptions - see https://c2fo.github.io/fast-csv/docs/parsing/options for available options such as skipping headers, or objectmode
      */
     map(props, parserOptions = {}) {
@@ -113,13 +127,17 @@ class AzureDatalakeExt {
             return new Promise((resolve, reject) => __awaiter(this, void 0, void 0, function* () {
                 try {
                     const { url } = props;
-                    let { mapper } = props, i = 0, promises = [], keys;
+                    const zipped = url.substr(-2) === 'gz';
+                    let { mapper, persist } = props;
+                    let { delimiter } = parserOptions;
+                    let i = 0, promises = [], keys;
                     parserOptions['key_values'] = parserOptions['key_values'] === undefined
                         ? true : parserOptions['key_values'];
+                    delimiter = delimiter || ',';
                     let stream;
                     try {
                         stream = yield this.client.readableStream({ url });
-                        if (url.substr(-2) === 'gz')
+                        if (zipped)
                             stream = stream.pipe(zlib.createGunzip());
                     }
                     catch (err) {
@@ -128,25 +146,65 @@ class AzureDatalakeExt {
                     try {
                         stream_1.pipeline(stream, parse_1.parse(parserOptions)
                             .on('data', data => {
-                            if (parserOptions['key_values']) {
-                                if (i === 0 && !keys) {
-                                    keys = data;
-                                    return;
+                            try {
+                                if (parserOptions['key_values']) {
+                                    if (i === 0 && !keys) {
+                                        keys = data;
+                                        return;
+                                    }
+                                    const keyed_data = keys.reduce((acc, key, i) => {
+                                        acc[key] = data[i];
+                                        return acc;
+                                    }, {});
+                                    promises.push(mapper(keyed_data, i));
+                                    i++;
                                 }
-                                const keyed_data = keys.reduce((acc, key, i) => {
-                                    acc[key] = data[i];
-                                    return acc;
-                                }, {});
-                                promises.push(mapper(keyed_data, i));
+                                else {
+                                    promises.push(mapper(data, i));
+                                    i++;
+                                }
                             }
-                            else {
-                                promises.push(mapper(data, i));
-                                i++;
+                            catch (err) {
+                                console.log('!<->!');
                             }
                         })
                             .on('error', reject)
                             .on('end', () => __awaiter(this, void 0, void 0, function* () {
+                            //await all promises in the mapped stack
                             const result = yield Promise.all(promises);
+                            //if we're saving the result back to the datalake overwriting what WAS there.
+                            if (persist) {
+                                //CSVify the result
+                                let headings, rows, content;
+                                //if we mapped over key/value objects, CSVify based of an array of keyvalue objects.
+                                if (parserOptions['key_values']) {
+                                    try {
+                                        headings = Object.keys(result[0]).join(delimiter);
+                                        rows = result.map(data => Object.values(data).join(delimiter));
+                                        content = [].concat(headings, rows).join(os_1.EOL);
+                                    }
+                                    catch (err) {
+                                        throw Error('Failed to construct the result to CSV.');
+                                    }
+                                }
+                                //if we mapped over raw rows csvify that way.
+                                else {
+                                    content = result.map(data => data.join(delimiter)).join(os_1.EOL);
+                                }
+                                //push the CSV back up to the datalake
+                                try {
+                                    //if the URL is a zip file, zip up the contents.
+                                    if (zipped)
+                                        throw Error(`Unimplemented - zip up a mapped result`);
+                                    const client = this.client.getFileClient({ url });
+                                    yield client.create();
+                                    yield client.append(content, 0, content.length);
+                                    yield client.flush(content.length);
+                                }
+                                catch (err) {
+                                    throw Error(`Failed uploading result to datalake - ${err.message}`);
+                                }
+                            }
                             resolve(result);
                         })), err => reject);
                     }

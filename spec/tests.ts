@@ -2,6 +2,7 @@ require('dotenv').config()
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { EOL } from 'os';
 
 import { assert } from 'chai';
 import {
@@ -420,7 +421,54 @@ describe(`Datalake client tests`, function() {
 
                     assert(err && err.message.includes('Cannot read property'), 'failed')
                 }
-            })
+            });
+
+            it.only(`Persists the result upon the file it parsed and mapped`, async () => {
+
+                let result;
+
+                const url = 'https://nusatradeadl.blob.core.windows.net/dev/test/testfile.csv';
+
+                const mock = [
+                    'val1,val2',
+                    'a,b',
+                    'aa,bb',
+                    'aaa,bbb'
+                ];
+
+                const instance = new AzureDatalakeClient();
+                
+                const iterationCount = mock.length;
+                let currentIteration = 0;
+
+                result = await instance.put({url, content: mock.join('\n'), overwrite:true});                
+                assert(result === true, `failed uploading mock data to ${url}`);
+
+                const original = await instance.get({url});
+
+                result = await instance.ext.map(
+                    {
+                        url,
+                        persist:true,
+                        mapper: (row, itr) => {
+                            row.val1 = row.val1+'!'
+                            row.val2 = row.val2+'!!'
+                            currentIteration = itr;
+                            return row;
+                        }
+                    }
+                );
+                assert(Array.isArray(result), 'expected the result to be returned from the map operation');
+                //minus 1 for the heading row and minus another 1 for the zero count vs human count
+                assert(iterationCount === currentIteration + 1 + 1, 'did not loop through all rows of the mock');
+
+                const mutated = await instance.ext.get({url});
+
+                assert(JSON.stringify(mutated) === JSON.stringify(result), 'failed - expected the stored version to be precisely the same as the result');
+                console.log('-')
+
+
+            });
 
         });
 
@@ -626,7 +674,7 @@ describe(`Datalake client tests`, function() {
 
         describe(`get`, () => {
 
-            it.only(`invokes get on a valid URL`, async () => {
+            it(`invokes get on a valid URL`, async () => {
 
                 const instance = new AzureDatalakeClient();
 

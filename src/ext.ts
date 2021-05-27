@@ -3,6 +3,7 @@ import { parse } from '@fast-csv/parse';
 import * as I from './types';
 import { pipeline } from 'stream';
 import * as zlib from 'zlib';
+import { EOL } from 'os';
 
 import {
     TableServiceClient,
@@ -10,6 +11,8 @@ import {
     TableClient
 } from '@azure/data-tables';
 import { StorageSharedKeyCredential } from '@azure/storage-file-datalake';
+
+
 
 export class AzureDatalakeExt {
 
@@ -21,6 +24,15 @@ export class AzureDatalakeExt {
         this.client = client;
     }
 
+    /**
+     * Download and parse a CSV to memory
+     * 
+     * @param props Object the argument keyword object
+     * @param props.url String the url
+     * @param parserOptions ExtendedParserOptionsArgs parser options.
+     * 
+     * @returns Promise with a parsed CSV (ie an array of the rows) 
+     */
     async get( props, parserOptions:I.ExtendedParserOptionsArgs={} ):Promise<Array<any>> {
 
         const { url } = props;
@@ -28,13 +40,15 @@ export class AzureDatalakeExt {
     }
 
     /**
+     * Perform a reduce operation upon a stored CSV file in the datalake, optionally storing and overwriting the result.
      * 
      * @param props the property object
      * @param props.url the url of the data to perform this reduce upon.
      * @param props.reducer Function called on each row
+     * @param props.persist Boolean persist the result back upon the file. Default false.
      * @param parserOptions - see https://c2fo.github.io/fast-csv/docs/parsing/options for available options such as skipping headers, or objectmode
      */
-    reduce( props:I.extReduceProps, parserOptions={} ):Promise<any> {
+    reduce( props:I.extReduceProps, parserOptions:I.ExtendedParserOptionsArgs={} ):Promise<any> {
 
         return new Promise( async (resolve, reject) => {
     
@@ -113,30 +127,42 @@ export class AzureDatalakeExt {
     }
 
     /**
+     * Map through a stored CSV file in the datalake, optionally storing and overwriting the result.
      * 
      * @param props the property object
      * @param props.url the url of the CSV file we'll be mapping over.
-     * @param props.eachRow Function called on each row
+     * @param props.mapper Function called on each row
+     * @param props.persist Boolean persist the result back upon the file. Default: false.
      * @param parserOptions - see https://c2fo.github.io/fast-csv/docs/parsing/options for available options such as skipping headers, or objectmode
      */
-    async map( props, parserOptions={} ):Promise<Array<any>> {
+    async map( props:I.extMapProps, parserOptions:I.ExtendedParserOptionsArgs={} ):Promise<any[]> {
 
         return new Promise( async (resolve, reject) => {
 
             try {
                 const { url } = props;
-                let { mapper } = props,
-                    i=0,
+                const zipped = url.substr(-2) === 'gz';
+                let {
+                    mapper,
+                    persist
+                } = props;
+                let {
+                    delimiter
+                } = parserOptions;
+                
+                let i=0,
                     promises=[],
                     keys;
 
                 parserOptions['key_values'] = parserOptions['key_values'] === undefined
                     ? true : parserOptions['key_values'];
 
+                delimiter = delimiter || ',';
+
                 let stream;
                 try {
                     stream = await this.client.readableStream({url});
-                    if(url.substr(-2) === 'gz')
+                    if(zipped)
                         stream = stream.pipe(zlib.createGunzip())
                 }
                 catch( err ){
@@ -150,29 +176,78 @@ export class AzureDatalakeExt {
                         parse(parserOptions)
                             .on('data', data => {
 
-                                if(parserOptions['key_values']) {
-                                    if(i === 0 && !keys) {
-                                        keys = data;
-                                        return;    
+                                try {
+                                    if(parserOptions['key_values']) {
+                                        if(i === 0 && !keys) {
+                                            keys = data;
+                                            return;    
+                                        }
+            
+                                        const keyed_data = keys.reduce((acc, key, i) => {
+                                            acc[key] = data[i];
+                                            return acc;
+                                        }, {})
+            
+                                        promises.push(mapper(keyed_data, i));
+                                        i++;
                                     }
-        
-                                    const keyed_data = keys.reduce((acc, key, i) => {
-                                        acc[key] = data[i];
-                                        return acc;
-                                    }, {})
-        
-                                    promises.push(mapper(keyed_data, i));
-        
-                                }
-                                else {
+                                    else {
 
-                                    promises.push(mapper(data, i));
-                                    i++;
+                                        promises.push(mapper(data, i));
+                                        i++;
+                                    }
+                                }
+                                catch( err ) {
+                                    console.log('!<->!')
                                 }
                             })
                             .on('error', reject)
                             .on('end', async () => {
-                                const result = await Promise.all(promises)
+
+                                //await all promises in the mapped stack
+                                const result = await Promise.all(promises);
+
+                                //if we're saving the result back to the datalake overwriting what WAS there.
+                                if(persist) {
+
+                                    //CSVify the result
+                                    let headings, rows, content;
+
+                                    //if we mapped over key/value objects, CSVify based of an array of keyvalue objects.
+                                    if(parserOptions['key_values']) {
+
+                                        try {
+                                            headings = Object.keys(result[0]).join(delimiter);
+                                            rows = result.map(data => Object.values(data).join(delimiter));
+                                            content = [].concat(headings, rows).join(EOL);
+                                        }
+                                        catch( err ) {
+                                            throw Error('Failed to construct the result to CSV.');
+                                        }
+                                    }
+                                    //if we mapped over raw rows csvify that way.
+                                    else {
+
+                                        content = result.map(data => data.join(delimiter)).join(EOL);
+                                    }
+                                    
+                                    //push the CSV back up to the datalake
+                                    try {
+
+                                        //if the URL is a zip file, zip up the contents.
+                                        if(zipped)
+                                            throw Error(`Unimplemented - zip up a mapped result`);
+
+                                        const client = this.client.getFileClient({url});
+                                        await client.create();
+                                        await client.append(content, 0, content.length);
+                                        await client.flush(content.length);
+                                    }
+                                    catch( err ) {
+                                        throw Error(`Failed uploading result to datalake - ${err.message}`)
+                                    }
+                                }
+
                                 resolve(result);
                             })
                         ,
@@ -570,6 +645,7 @@ export class AzureDatalakeExt {
         })
 
     }
+
 }
 
 /**
