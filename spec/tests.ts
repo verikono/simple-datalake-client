@@ -47,6 +47,7 @@ describe(`Datalake client tests`, function() {
     const validURL_BIG_ZIPPED = process.env.TEST_VALID_URL_BIG_ZIPPED;
     const validURL_WITH_EMPTY_COLUMNS = process.env.TEST_VALID_URL_WITH_EMPTY_COLUMNS;
     const validURLNotExists = validURL.split('/').slice(0, -1).concat('nofilenoway.csv').join('/')
+    const validReferenceCalenderURL = process.env.TEST_VALID_REFERENCE_CALENDAR_URL;
 
     describe(`Setup`, () => {
 
@@ -239,7 +240,7 @@ describe(`Datalake client tests`, function() {
 
         });
 
-        describe(`stream`, () => {
+        describe.skip(`stream`, () => {
 
             const instance = new AzureDatalakeClient();
 
@@ -265,7 +266,7 @@ describe(`Datalake client tests`, function() {
 
         });
 
-        describe(`get`, () => {
+        describe.skip(`get`, () => {
 
             const instance = new AzureDatalakeClient();
 
@@ -275,7 +276,7 @@ describe(`Datalake client tests`, function() {
             });
         });
 
-        describe(`save`, () => {
+        describe.skip(`save`, () => {
 
             const instance = new AzureDatalakeClient();
 
@@ -423,7 +424,7 @@ describe(`Datalake client tests`, function() {
                 }
             });
 
-            it.only(`Persists the result upon the file it parsed and mapped`, async () => {
+            it(`Persists the result upon the file it parsed and mapped`, async () => {
 
                 let result;
 
@@ -465,7 +466,8 @@ describe(`Datalake client tests`, function() {
                 const mutated = await instance.ext.get({url});
 
                 assert(JSON.stringify(mutated) === JSON.stringify(result), 'failed - expected the stored version to be precisely the same as the result');
-                console.log('-')
+
+                
 
 
             });
@@ -535,20 +537,20 @@ describe(`Datalake client tests`, function() {
 
         });
 
-        describe(`cache`, () => {
+        describe.only(`cache`, () => {
 
             it(`Caches`, async () => {
 
                 const instance = new AzureDatalakeClient();
                 const result = await instance.ext.cache({
-                    url: validURL,
+                    url: validReferenceCalenderURL,
                     table: 'brenstest',
                     partitionKey: 'planning_account',
                     rowKey: row =>  crypto.createHash('md5').update(JSON.stringify(row)).digest("hex"),
                     replaceIfExists:true
-                }, {delimiter:'|'});
+                });
 
-                const count = await instance.ext.count({url: validURL}, {delimiter:'|', headers: true})
+                const count = await instance.ext.count({url: validReferenceCalenderURL}, {delimiter:'|', headers: true})
                 assert(count === result.numRowsInserted, 'failed');
             });
 
@@ -558,19 +560,12 @@ describe(`Datalake client tests`, function() {
                 let result;
 
                 const instance = new AzureDatalakeClient();
-                const AZURE_STORAGE_ACCOUNT = process.env.AZURE_STORAGE_ACCOUNT || 'AZURE_STORAGE_ACCOUNT';
-                const AZURE_STORAGE_ACCOUNT_KEY = process.env.AZURE_STORAGE_ACCOUNT_KEY || 'AZURE_STORAGE_ACCOUNT_KEY';
 
                 //@todo remove the global keys once this package is compatible with AzureDefaultCredential.
-                const tables = new AzureDataTablesClient({
-                    global_keys: {
-                        AZURE_STORAGE_ACCOUNT,
-                        AZURE_STORAGE_ACCOUNT_KEY
-                    }
-                });
+                const tables = new AzureDataTablesClient();
 
                 result = await instance.ext.cache({
-                    url: validURL,
+                    url: validReferenceCalenderURL,
                     table: tableName,
                     partitionKey: 'planning_account',
                     rowKey: row => {
@@ -578,14 +573,11 @@ describe(`Datalake client tests`, function() {
                     },
                     replaceIfExists:true,
                     types: {
-                        max_discount: "float",
-                        super_category: "string",
-                        min_duration_block: "boolean",
-                        min_discount_display: "bigint"
+                        duration: "float",
+                        cust_promo_id: "string",
+                        feature_ind: "boolean",
+                        bb_unit_rate: "float"
                     }
-                },
-                {
-                    delimiter: '|'
                 });
 
                 assert(result && result.numRowsInserted > 0, 'failed');
@@ -593,8 +585,8 @@ describe(`Datalake client tests`, function() {
 
                 result = await tables.rows({table: tableName});
                 assert(result.length === numRowsInserted, 'failed');
-                assert(result.every(row => typeof row.max_discount === 'number'), 'failed');
-                assert(result.every(row => typeof row.super_category === 'string'), 'failed');
+                assert(result.every(row => typeof row.bb_unit_rate === 'number'), 'failed');
+                assert(result.every(row => typeof row.cust_promo_id === 'string'), 'failed');
 
                 await tables.drop({table: tableName});
 
@@ -637,7 +629,7 @@ describe(`Datalake client tests`, function() {
                 assert(totalRows === cnt-1, 'failed');
             });
 
-            it(`invokes mapSlices and nullifies empty columns`, async () => {
+            it.skip(`invokes mapSlices and nullifies empty columns`, async () => {
 
                 const instance = new AzureDatalakeClient();
 
@@ -678,7 +670,7 @@ describe(`Datalake client tests`, function() {
 
                 const instance = new AzureDatalakeClient();
 
-                const url = validURL_WITH_EMPTY_COLUMNS;
+                const url = validURL;
                 const exists = await instance.exists({url});
                 if(!exists)
                     throw Error(`Test file does not exist`);

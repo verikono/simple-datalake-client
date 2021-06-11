@@ -201,7 +201,9 @@ export class AzureDatalakeExt {
                                     console.log('!<->!')
                                 }
                             })
-                            .on('error', reject)
+                            .on('error', err => {
+                                return reject(err)
+                            })
                             .on('end', async () => {
 
                                 //await all promises in the mapped stack
