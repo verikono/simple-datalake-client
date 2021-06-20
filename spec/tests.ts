@@ -537,7 +537,7 @@ describe(`Datalake client tests`, function() {
 
         });
 
-        describe.only(`cache`, () => {
+        describe(`cache`, () => {
 
             it(`Caches`, async () => {
 
@@ -681,6 +681,52 @@ describe(`Datalake client tests`, function() {
             });
 
         })
+
+        describe.only(`compile`, async () => {
+
+            it(`invokes get on valid URLs`, async () => {
+
+                const instance = new AzureDatalakeClient();
+                const { data, diff } = await instance.ext.compile({
+                    urls: [
+                        'https://nusatradeadl.blob.core.windows.net/simulation-service/scenario-results/SYSTEM/62b5fcda72cd43958cdc4205ed9376c5/COFFEE%20PARTNERS/output/optimized_simulated.csv.gz',
+                        'https://nusatradeadl.blob.core.windows.net/simulation-service/scenario-results/rhelsen%40enterrasolutions.com/3aefc3909d664dcf95a47a72ce8a0286/COFFEE%20PARTNERS/output/optimized_simulated.csv.gz'
+                    ],
+                    pk: data => {
+                        return ['planning_account', 'start_date', 'group_name', 'promo_tactic']
+                                .map(key => data[key])
+                                .join('|');
+                    }
+                }, {delimiter:'|'});
+
+                assert(Array.isArray(data), 'data is spuposed to be an array');
+                assert(data.length, 'no rows were returned');
+                assert(Object.keys(diff).length > 0, 'received an unpopulated diff where changes were expected to return');
+
+            });
+
+            it(`Records no changes when the same URL is used 3 times`, async () => {
+
+                const instance = new AzureDatalakeClient();
+                const { data, diff } = await instance.ext.compile({
+                    urls: [
+                        'https://nusatradeadl.blob.core.windows.net/simulation-service/scenario-results/SYSTEM/62b5fcda72cd43958cdc4205ed9376c5/COFFEE%20PARTNERS/output/optimized_simulated.csv.gz',
+                        'https://nusatradeadl.blob.core.windows.net/simulation-service/scenario-results/SYSTEM/62b5fcda72cd43958cdc4205ed9376c5/COFFEE%20PARTNERS/output/optimized_simulated.csv.gz',
+                        'https://nusatradeadl.blob.core.windows.net/simulation-service/scenario-results/SYSTEM/62b5fcda72cd43958cdc4205ed9376c5/COFFEE%20PARTNERS/output/optimized_simulated.csv.gz'
+                    ],
+                    pk: data => {
+                        return ['planning_account', 'start_date', 'group_name', 'promo_tactic']
+                                .map(key => data[key])
+                                .join('|');
+                    }
+                }, {delimiter:'|'});
+
+                assert(Array.isArray(data), 'data is spuposed to be an array');
+                assert(data.length, 'no rows were returned');
+                assert(Object.keys(diff).length === 0, 'received a populated diff where the diff was expected to be empty');
+            });
+
+        });
 
     });
 

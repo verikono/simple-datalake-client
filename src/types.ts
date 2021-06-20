@@ -106,3 +106,8 @@ export interface extMapProps {
 export interface ExtendedParserOptionsArgs extends ParserOptionsArgs {
     nullifyEmptyColumns?:boolean;
 }
+
+export interface extCompileProps {
+    urls: string[];
+    pk: string|string[]|Function;
+}
