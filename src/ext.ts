@@ -696,7 +696,8 @@ export class AzureDatalakeExt {
                             stream = stream.pipe(zlib.createGunzip())
                     }
                     catch( err ){
-                        return reject(err)
+
+                        return reject(new Error(`AzureDatalakeClient::compiled failed to load data from ${url} - ${err.message}`));
                     }
 
                     const createPk = keyed_row => {

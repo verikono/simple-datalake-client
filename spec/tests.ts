@@ -705,6 +705,46 @@ describe(`Datalake client tests`, function() {
 
             });
 
+            it(`errors gracefully when a non-existant URL is provided`, async () => {
+
+                const instance = new AzureDatalakeClient();
+                const { data, diff } = await instance.ext.compile({
+                    urls: [
+                        'https://nusatradeadl.blob.core.windows.net/simulation-service/scenario-results/SYSTEM/62b5fcda72cd43958cdc4205ed9376c5/COFFEE%20PARTNERS/output/doesnotexist.csv.gz'
+                    ],
+                    pk: data => {
+                        return ['planning_account', 'start_date', 'group_name', 'promo_tactic']
+                                .map(key => data[key])
+                                .join('|');
+                    }
+                }, {delimiter:'|'});
+
+                assert(Array.isArray(data), 'data is spuposed to be an array');
+                assert(data.length, 'no rows were returned');
+                assert(Object.keys(diff).length === 0, 'received a populated diff where the diff was expected to be empty');
+
+
+            });
+
+            it(`works with only 1 url provided - returning the data and an empty diff`, async () => {
+
+                const instance = new AzureDatalakeClient();
+                const { data, diff } = await instance.ext.compile({
+                    urls: [
+                        'https://nusatradeadl.blob.core.windows.net/simulation-service/scenario-results/SYSTEM/62b5fcda72cd43958cdc4205ed9376c5/COFFEE%20PARTNERS/output/optimized_simulated.csv.gz'
+                    ],
+                    pk: data => {
+                        return ['planning_account', 'start_date', 'group_name', 'promo_tactic']
+                                .map(key => data[key])
+                                .join('|');
+                    }
+                }, {delimiter:'|'});
+
+                assert(Array.isArray(data), 'data is spuposed to be an array');
+                assert(data.length, 'no rows were returned');
+                assert(Object.keys(diff).length === 0, 'received a populated diff where the diff was expected to be empty');
+            });
+
             it(`Records no changes when the same URL is used 3 times`, async () => {
 
                 const instance = new AzureDatalakeClient();
