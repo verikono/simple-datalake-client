@@ -707,23 +707,70 @@ describe(`Datalake client tests`, function() {
 
             it(`errors gracefully when a non-existant URL is provided`, async () => {
 
+                let caught = false;
+                try {
+
+                    const instance = new AzureDatalakeClient();
+                    const { data, diff } = await instance.ext.compile({
+                        urls: [
+                            'https://nusatradeadl.blob.core.windows.net/simulation-service/scenario-results/SYSTEM/62b5fcda72cd43958cdc4205ed9376c5/COFFEE%20PARTNERS/output/doesnotexist.csv.gz'
+                        ],
+                        pk: data => {
+                            return ['planning_account', 'start_date', 'group_name', 'promo_tactic']
+                                    .map(key => data[key])
+                                    .join('|');
+                        }
+                    }, {delimiter:'|'});
+
+                }
+                catch( err ) {
+                    caught = true;
+                }
+                assert(caught === true, 'failed');
+
+
+            });
+
+            it.only(`errors gracefully when a pk function errors`, async () => {
+
                 const instance = new AzureDatalakeClient();
-                const { data, diff } = await instance.ext.compile({
-                    urls: [
-                        'https://nusatradeadl.blob.core.windows.net/simulation-service/scenario-results/SYSTEM/62b5fcda72cd43958cdc4205ed9376c5/COFFEE%20PARTNERS/output/doesnotexist.csv.gz'
-                    ],
-                    pk: data => {
-                        return ['planning_account', 'start_date', 'group_name', 'promo_tactic']
-                                .map(key => data[key])
-                                .join('|');
-                    }
-                }, {delimiter:'|'});
+                let caught = false;
+                try {
 
-                assert(Array.isArray(data), 'data is spuposed to be an array');
-                assert(data.length, 'no rows were returned');
-                assert(Object.keys(diff).length === 0, 'received a populated diff where the diff was expected to be empty');
+                    await instance.ext.compile({
+                        urls: ["https://nusatradeadl.blob.core.windows.net/simulation-service/scenario-results/SYSTEM/62b5fcda72cd43958cdc4205ed9376c5/COFFEE PARTNERS/output/optimized_simulated.csv.gz"],
+                        pk: data => {
+                            throw new Error('synthetic testing error')
+                        }
+                    });
+                }
+                catch( err ) {
 
+                    caught = true;
+                }
+                assert(caught === true, 'failed');
+                
+            });
 
+            it.only(`errors gracefully when a PK function returns a falsy result`, async () => {
+
+                const instance = new AzureDatalakeClient();
+                let caught = false;
+                try {
+
+                    await instance.ext.compile({
+                        urls: ["https://nusatradeadl.blob.core.windows.net/simulation-service/scenario-results/SYSTEM/62b5fcda72cd43958cdc4205ed9376c5/COFFEE PARTNERS/output/optimized_simulated.csv.gz"],
+                        pk: data => {
+                            return false;
+                        }
+                    });
+                }
+                catch( err ) {
+
+                    caught = true;
+                }
+                assert(caught === true, 'failed');
+                
             });
 
             it(`works with only 1 url provided - returning the data and an empty diff`, async () => {
@@ -731,7 +778,8 @@ describe(`Datalake client tests`, function() {
                 const instance = new AzureDatalakeClient();
                 const { data, diff } = await instance.ext.compile({
                     urls: [
-                        'https://nusatradeadl.blob.core.windows.net/simulation-service/scenario-results/SYSTEM/62b5fcda72cd43958cdc4205ed9376c5/COFFEE%20PARTNERS/output/optimized_simulated.csv.gz'
+                        "https://nusatradeadl.blob.core.windows.net/simulation-service/scenario-results/SYSTEM/62b5fcda72cd43958cdc4205ed9376c5/COFFEE PARTNERS/output/optimized_simulated.csv.gz",
+                        //'https://nusatradeadl.blob.core.windows.net/simulation-service/scenario-results/SYSTEM/62b5fcda72cd43958cdc4205ed9376c5/COFFEE%20PARTNERS/output/optimized_simulated.csv.gz'
                     ],
                     pk: data => {
                         return ['planning_account', 'start_date', 'group_name', 'promo_tactic']

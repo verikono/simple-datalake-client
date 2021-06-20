@@ -539,7 +539,15 @@ class AzureDatalakeExt {
                                     throw Error(`unable to use argued pk - expected string|string[]|Function - got ${typeof pk}`);
                                 return pk.reduce((acc, key) => acc.concat(keyed_row['pk']), '');
                             case 'function':
-                                return pk(keyed_row);
+                                try {
+                                    const result = pk(keyed_row);
+                                    if (!result)
+                                        throw new Error('PK functions must return a truthy result');
+                                    return result;
+                                }
+                                catch (err) {
+                                    throw new Error(`pk function thew an error - ${err.message}`);
+                                }
                             default:
                                 throw new Error(`unable to use argued pk - expected string | string[] | Function - got ${typeof pk}`);
                         }
@@ -548,117 +556,113 @@ class AzureDatalakeExt {
                     //column names accumulated in the first row.
                     const toKeyValueObject = data => columnNames.reduce((acc, col, i) => Object.assign(acc, { [col]: data[i] }), {});
                     const rowIsIdentical = (row1, row2) => JSON.stringify(row1) === JSON.stringify(row2);
-                    try {
-                        yield new Promise((res, rej) => {
-                            try {
-                                let deleteRows = [];
-                                const newRows = [];
-                                stream_1.pipeline(stream, parse_1.parse(parserOptions)
-                                    .on('data', data => {
-                                    //first row of the first file is assumed to contain the column names.
-                                    if (rowNum === 0 && fileItr === 0) {
-                                        columnNames = data;
+                    yield new Promise((res, rej) => {
+                        try {
+                            let deleteRows = [];
+                            const newRows = [];
+                            stream_1.pipeline(stream, parse_1.parse(parserOptions)
+                                .on('data', data => {
+                                //first row of the first file is assumed to contain the column names.
+                                if (rowNum === 0 && fileItr === 0) {
+                                    columnNames = data;
+                                }
+                                //first row of 2nd+ file - assumed to be the column namesdat
+                                else if (rowNum === 0 && fileItr !== 0) {
+                                    //ensure the keys are the same for each file, ensure this new file has the same columns
+                                    if (data.length !== columnNames.length || !data.every(col => columnNames.includes(col)))
+                                        return reject(new Error(`Compile can only work for files with the same columns`));
+                                    //set up the dleteRows which we'll each one off as we iterate through them, leaving any
+                                    //left which the 'end' event is fired to be scheduled for deletion.
+                                    deleteRows = result.map(row => row._pk);
+                                }
+                                //2nd+ row from first file.
+                                else if (rowNum !== 0 && fileItr == 0) {
+                                    //create a map of the data, and attach a PK.
+                                    const keyed_data = toKeyValueObject(data);
+                                    keyed_data._pk = createPk(keyed_data);
+                                    result.push(keyed_data);
+                                }
+                                //2nd+ row from 2nd+ file, here we merge.
+                                else if (rowNum !== 0 && fileItr !== 0) {
+                                    //create a map of the data, and attach a PK.
+                                    const keyed_data = toKeyValueObject(data);
+                                    keyed_data._pk = createPk(keyed_data);
+                                    //find the row in the result.
+                                    let resultIdx = result.findIndex(result => result._pk === keyed_data._pk);
+                                    //if its a new row, then add it as a "new" to the rollup (performed when an end event is fired, see .on('end')).
+                                    if (resultIdx === -1) {
+                                        newRows.push(keyed_data);
+                                        return;
                                     }
-                                    //first row of 2nd+ file - assumed to be the column namesdat
-                                    else if (rowNum === 0 && fileItr !== 0) {
-                                        //ensure the keys are the same for each file, ensure this new file has the same columns
-                                        if (data.length !== columnNames.length || !data.every(col => columnNames.includes(col)))
-                                            return reject(new Error(`Compile can only work for files with the same columns`));
-                                        //set up the dleteRows which we'll each one off as we iterate through them, leaving any
-                                        //left which the 'end' event is fired to be scheduled for deletion.
-                                        deleteRows = result.map(row => row._pk);
-                                    }
-                                    //2nd+ row from first file.
-                                    else if (rowNum !== 0 && fileItr == 0) {
-                                        //create a map of the data, and attach a PK.
-                                        const keyed_data = toKeyValueObject(data);
-                                        keyed_data._pk = createPk(keyed_data);
-                                        result.push(keyed_data);
-                                    }
-                                    //2nd+ row from 2nd+ file, here we merge.
-                                    else if (rowNum !== 0 && fileItr !== 0) {
-                                        //create a map of the data, and attach a PK.
-                                        const keyed_data = toKeyValueObject(data);
-                                        keyed_data._pk = createPk(keyed_data);
-                                        //find the row in the result.
-                                        let resultIdx = result.findIndex(result => result._pk === keyed_data._pk);
-                                        //if its a new row, then add it as a "new" to the rollup (performed when an end event is fired, see .on('end')).
-                                        if (resultIdx === -1) {
-                                            newRows.push(keyed_data);
-                                            return;
-                                        }
-                                        deleteRows = deleteRows.filter(pk => pk !== keyed_data._pk);
-                                        const noChangesInRow = rowIsIdentical(result[resultIdx], keyed_data);
-                                        if (!noChangesInRow) {
-                                            columnNames.reduce((acc, key) => {
-                                                try {
-                                                    //if(newRow) return acc;
-                                                    if (result[resultIdx][key].toString() === keyed_data[key].toString())
-                                                        return acc;
-                                                    if (!diff.hasOwnProperty(keyed_data._pk))
-                                                        diff[keyed_data._pk] = {};
-                                                    if (!diff[keyed_data._pk].hasOwnProperty(key))
-                                                        diff[keyed_data._pk][key] = [];
-                                                    diff[keyed_data._pk][key].push({
-                                                        type: 'variation',
-                                                        value: keyed_data[key],
-                                                        value_from: result[resultIdx][key],
-                                                        url: urls[fileItr]
-                                                    });
-                                                    result[resultIdx][key] = keyed_data[key];
+                                    deleteRows = deleteRows.filter(pk => pk !== keyed_data._pk);
+                                    const noChangesInRow = rowIsIdentical(result[resultIdx], keyed_data);
+                                    if (!noChangesInRow) {
+                                        columnNames.reduce((acc, key) => {
+                                            try {
+                                                //if(newRow) return acc;
+                                                if (result[resultIdx][key].toString() === keyed_data[key].toString())
                                                     return acc;
-                                                }
-                                                catch (err) {
-                                                    throw new Error(`a problem was encountered whilst interpretting a change upon column:${key} on row ${rowNum} of ${urls[fileItr]}} - ${err.message}`);
-                                                }
-                                            }, []);
-                                        }
+                                                if (!diff.hasOwnProperty(keyed_data._pk))
+                                                    diff[keyed_data._pk] = {};
+                                                if (!diff[keyed_data._pk].hasOwnProperty(key))
+                                                    diff[keyed_data._pk][key] = [];
+                                                diff[keyed_data._pk][key].push({
+                                                    type: 'variation',
+                                                    value: keyed_data[key],
+                                                    value_from: result[resultIdx][key],
+                                                    url: urls[fileItr]
+                                                });
+                                                result[resultIdx][key] = keyed_data[key];
+                                                return acc;
+                                            }
+                                            catch (err) {
+                                                throw new Error(`a problem was encountered whilst interpretting a change upon column:${key} on row ${rowNum} of ${urls[fileItr]}} - ${err.message}`);
+                                            }
+                                        }, []);
                                     }
-                                    rowNum++;
-                                })
-                                    .on('error', err => {
-                                    return rej(err);
-                                })
-                                    .on('end', () => __awaiter(this, void 0, void 0, function* () {
-                                    rowNum = 0;
-                                    deleteRows.forEach(pk => {
-                                        const resultRow = result.find(res => res._pk === pk);
-                                        if (!diff.hasOwnProperty(pk))
-                                            diff[pk] = {};
-                                        diff[pk] = Object.keys(resultRow).reduce((acc, key) => {
-                                            acc[key] = {
-                                                type: 'delete',
-                                                value: null,
-                                                value_from: resultRow[key],
-                                                url: urls[fileItr]
-                                            };
-                                            return acc;
-                                        }, {});
-                                        result = result.filter(res => res._pk !== pk);
-                                    });
-                                    newRows.forEach(keyed_data => {
-                                        diff[keyed_data._pk] = columnNames.reduce((acc, key) => {
-                                            acc[key] = {
-                                                type: 'new',
-                                                value: keyed_data[key],
-                                                value_from: null,
-                                                url: urls[fileItr]
-                                            };
-                                            return acc;
-                                        }, {});
-                                        result.push(keyed_data);
-                                    });
-                                    return res(true);
-                                })), err => rej);
-                            }
-                            catch (err) {
+                                }
+                                rowNum++;
+                            })
+                                .on('error', err => {
                                 return rej(err);
-                            }
-                        });
-                    }
-                    catch (err) {
-                        console.log('/,-');
-                    }
+                            })
+                                .on('end', () => __awaiter(this, void 0, void 0, function* () {
+                                rowNum = 0;
+                                deleteRows.forEach(pk => {
+                                    const resultRow = result.find(res => res._pk === pk);
+                                    if (!diff.hasOwnProperty(pk))
+                                        diff[pk] = {};
+                                    diff[pk] = Object.keys(resultRow).reduce((acc, key) => {
+                                        acc[key] = {
+                                            type: 'delete',
+                                            value: null,
+                                            value_from: resultRow[key],
+                                            url: urls[fileItr]
+                                        };
+                                        return acc;
+                                    }, {});
+                                    result = result.filter(res => res._pk !== pk);
+                                });
+                                newRows.forEach(keyed_data => {
+                                    diff[keyed_data._pk] = columnNames.reduce((acc, key) => {
+                                        acc[key] = {
+                                            type: 'new',
+                                            value: keyed_data[key],
+                                            value_from: null,
+                                            url: urls[fileItr]
+                                        };
+                                        return acc;
+                                    }, {});
+                                    result.push(keyed_data);
+                                });
+                                return res(true);
+                            })), err => rej);
+                        }
+                        catch (err) {
+                            return rej(err);
+                        }
+                    })
+                        .catch(err => reject(new Error(`AzureDatalake.ext has failed - ${err.message}`)));
                 }
                 resolve({ data: result, diff });
             }));
