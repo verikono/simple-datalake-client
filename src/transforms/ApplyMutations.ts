@@ -78,17 +78,6 @@ export class TxApplyMutations extends Transform {
                 throw new Error(`failed parsing a chunk from JSON`)
             }
 
-
-            // const p = JSON.parse(chunk.toString());
-            // p.forEach(obj => {
-            //     const conflict = this.matches.find(m => m === obj.promo_id)
-            //     if(conflict) {
-            //         console.log('#######');
-            //     }
-            //     this.matches.push(obj.promo_id);
-            // })
-            // console.log('chunk');
-
             if(Array.isArray(data)) {
 
                 const rows = data.map(row => this.applyModifications(row));

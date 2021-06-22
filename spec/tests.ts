@@ -838,32 +838,47 @@ describe(`Datalake client tests`, function() {
 
         });
 
-        describe(`modify`, async () => {
+        describe.only(`modify`, async () => {
 
             it(`it applies a modification to some existing datafile`, async () => {
 
+                const url = 'https://nusatradeadl.blob.core.windows.net/dev/test/reference_calendar.csv.gz';
                 const instance = new AzureDatalakeClient();
 
                 const modification = {
-                    planning_account: "Giant Eagle Inc",
-                    start_date: "20210110",
-                    group_name: "US66C6C306C30CE",
-                    promo_tactic: "General In-Store Promotions",
-                    duration: "14"
+                    planning_account: "AWG KC - Combined",
+                    start_date: "20210103",
+                    group_name: "USSS2S208S208C2",
+                    promo_tactic: "EDLP",
+                    duration: "999"
                 };
 
-                const result = await instance.ext.modify({
-                    url: 'https://nusatradeadl.blob.core.windows.net/simulation-service/scenario-results/SYSTEM/62b5fcda72cd43958cdc4205ed9376c5/COFFEE%20PARTNERS/output/optimized_simulated.csv.gz',
+                await instance.ext.modify({
+                    url: 'https://nusatradeadl.blob.core.windows.net/dev/test/reference_calendar.csv.gz',
                     pk: data => {
                         return ['planning_account', 'start_date', 'group_name', 'promo_tactic']
                                 .map(key => data[key])
                                 .join('|');
                     },
                     modifications: [modification]
-                }, {
-                    delimiter:'|'
+                }, { delimiter:'|' });
+
+                let found = false;
+
+                const result = await instance.ext.forEach({
+                    url,
+                    fn: (row,i) => {
+                        if(Object.keys(modification).every(key => modification[key] === row[key])) {
+                            found = true;
+                        }
+                    }
+                },
+                {
+                    delimiter: '|'
                 });
 
+                //@ts-ignore - found can be true, typescript has an issue .
+                assert(found === true, 'failed');
             });
 
         });
@@ -900,7 +915,7 @@ describe(`Datalake client tests`, function() {
             });
         });
 
-        describe.only(`Loader.toAzureDataLake`, () => {
+        describe(`Loader.toAzureDataLake`, () => {
 
             it(`Applies mutations to the mutation pipeline`, async () => {
 

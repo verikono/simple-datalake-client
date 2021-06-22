@@ -1,6 +1,6 @@
 {
   "name": "simple-datalake-client",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "A simple azure datalake client",
   "main": "dist/index.js",
   "repository": "git@github.com:verikono/simple-datalake-client.git",

@@ -28,7 +28,7 @@ export async function fromAzureDatalake( options ) {
     return stream;
 }
 
-interface toAzureDataLakeOptions{ url: string; spoolsize?: number; }
+interface toAzureDataLakeOptions{ url: string; replace?: boolean }
 export async function toAzureDatalake( options:toAzureDataLakeOptions ) {
 
     const {
@@ -41,15 +41,16 @@ export async function toAzureDatalake( options:toAzureDataLakeOptions ) {
         client;
         spool = [];
         cnt = 0;
-        spoolsize;
         offset=0;
         chunks = [];
         content = '';
+        okToReplace = false;
+
         constructor( options:toAzureDataLakeOptions ) {
 
             super();
             this.url = options.url;
-            this.spoolsize = options.spoolsize || 100;
+            this.okToReplace = options.replace === undefined ? false : options.replace;
         }
 
         async connect() {
@@ -57,11 +58,22 @@ export async function toAzureDatalake( options:toAzureDataLakeOptions ) {
             try {
 
                 this.client = new DataLakeFileClient(this.url, new DefaultAzureCredential());
+
+                if(await this.client.exists(this.url)) {
+                    if(!this.okToReplace) {
+                        throw new Error(`data exists at at ${this.url} : Argue {replace:true} if this is ok.`);
+                    }
+                    await this.client.delete();
+                }
+
                 await this.client.create();
+                
+
+
             }
             catch( err ) {
 
-                console.log('-')
+                throw new Error(`ToAzureDataLake has failed building the datalake client - ${err.message}`);
             }
         }
 
@@ -126,4 +138,5 @@ export async function toAzureDatalake( options:toAzureDataLakeOptions ) {
     const instance = new ToAzureDataLake(options);
     await instance.connect();
     return instance;
-} 
+}
+

@@ -891,49 +891,23 @@ export class AzureDatalakeExt {
             targetUrl = targetUrl || `${url}.tmp`;
             parserOptions['key_values'] = true;
 
-            const zipped = url.substr(-2) === 'gz';
-            
-            let rowNum = 0;
-            let keys = null;
-
-            const modstack = modifications.reduce((acc, modification) => Object.assign(acc, {[this.derivePk(pk, modification)]: modification}), {});
-            const result = [];
-
-            let stream;
-            try {
-                stream = await this.client.readableStream({url});
-                if(zipped)
-                    stream = stream.pipe(zlib.createGunzip())
-            }
-            catch( err ){
-
-                throw new Error(`AzureDatalakeClient::compiled failed to load data from ${url} - ${err.message}`);
-            }
-
-            const datalake = new AzureDatalakeClient();
-            const fileClient = datalake.getFileClient({url: targetUrl});
-            await fileClient.create();
-
-            let offset = 0;
-            let resultLength = 0;
-
             await new Promise( async (resolve, reject) => {
 
                 pipeline(
                     await fromAzureDatalake({url}),
                     CSVStreamToKeywordObjects(),
                     applyMutations({
-                        pk: 'planning_account',
-                        modifications: []
+                        pk,
+                        modifications
                     }),
-                    keywordArrayToCSV(),
+                    keywordArrayToCSV({delimiter}),
+                    await toAzureDatalake({url, replace:true}),
                     err => {
-                        console.log('---')
+                        if(err)
+                            return reject(err);
+                        resolve(true);
                     }
                 )
-                console.log('!@@@!');
-                await new Promise(res => {});
-                console.log('!!!!!!!!!!!!!!!!!');
 
             })
 
