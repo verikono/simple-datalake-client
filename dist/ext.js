@@ -29,11 +29,14 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AzureDatalakeExt = void 0;
+const client_1 = require("./client");
 const parse_1 = require("@fast-csv/parse");
 const stream_1 = require("stream");
 const zlib = __importStar(require("zlib"));
 const os_1 = require("os");
 const data_tables_1 = require("@azure/data-tables");
+const transforms_1 = require("./transforms");
+const loaders_1 = require("./loaders");
 class AzureDatalakeExt {
     constructor(props) {
         this.client = null;
@@ -422,7 +425,7 @@ class AzureDatalakeExt {
                     throw Error(`simple_datalake_client::cache failed - missing environment variable STORAGE_ACCOUNT`);
                 if (typeof AZURE_STORAGE_ACCOUNT_KEY !== "string" || !AZURE_STORAGE_ACCOUNT_KEY.length)
                     throw Error(`simple_datalake_client::cache failed - missing environment variable STORAGE_ACCOUNT_KEY`);
-                const credential = new data_tables_1.TablesSharedKeyCredential(AZURE_STORAGE_ACCOUNT, AZURE_STORAGE_ACCOUNT_KEY);
+                const credential = new data_tables_1.AzureNamedKeyCredential(AZURE_STORAGE_ACCOUNT, AZURE_STORAGE_ACCOUNT_KEY);
                 const serviceClient = new data_tables_1.TableServiceClient(`https://${AZURE_STORAGE_ACCOUNT}.table.core.windows.net`, credential);
                 const transactClient = new data_tables_1.TableClient(`https://${AZURE_STORAGE_ACCOUNT}.table.core.windows.net`, table, credential);
                 try {
@@ -495,10 +498,11 @@ class AzureDatalakeExt {
         }));
     }
     /**
-     * COmpileIterate through a list of URLs where each is expected to be;
+     * Iterate through a list of URLs where each is expected to be;
      *  - a CSV (gzipped or otherwise)
      *  - the same data with differences (eg. a list of friends for each month)
      *
+     * Each file will be overloaded upon the previous, applying changes and producing a diff.
      *
      * @param props
      * @param props.urls string[] - a list of urls which will be loaded in order
@@ -530,28 +534,6 @@ class AzureDatalakeExt {
                     catch (err) {
                         return reject(new Error(`AzureDatalakeClient::compiled failed to load data from ${url} - ${err.message}`));
                     }
-                    const createPk = keyed_row => {
-                        switch (typeof pk) {
-                            case 'string':
-                                return keyed_row['pk'];
-                            case 'object':
-                                if (!Array.isArray(pk))
-                                    throw Error(`unable to use argued pk - expected string|string[]|Function - got ${typeof pk}`);
-                                return pk.reduce((acc, key) => acc.concat(keyed_row['pk']), '');
-                            case 'function':
-                                try {
-                                    const result = pk(keyed_row);
-                                    if (!result)
-                                        throw new Error('PK functions must return a truthy result');
-                                    return result;
-                                }
-                                catch (err) {
-                                    throw new Error(`pk function thew an error - ${err.message}`);
-                                }
-                            default:
-                                throw new Error(`unable to use argued pk - expected string | string[] | Function - got ${typeof pk}`);
-                        }
-                    };
                     //helper function which converts a row of values to a key/value object based from the
                     //column names accumulated in the first row.
                     const toKeyValueObject = data => columnNames.reduce((acc, col, i) => Object.assign(acc, { [col]: data[i] }), {});
@@ -579,14 +561,14 @@ class AzureDatalakeExt {
                                 else if (rowNum !== 0 && fileItr == 0) {
                                     //create a map of the data, and attach a PK.
                                     const keyed_data = toKeyValueObject(data);
-                                    keyed_data._pk = createPk(keyed_data);
+                                    keyed_data._pk = this.derivePk(pk, keyed_data);
                                     result.push(keyed_data);
                                 }
                                 //2nd+ row from 2nd+ file, here we merge.
                                 else if (rowNum !== 0 && fileItr !== 0) {
                                     //create a map of the data, and attach a PK.
                                     const keyed_data = toKeyValueObject(data);
-                                    keyed_data._pk = createPk(keyed_data);
+                                    keyed_data._pk = this.derivePk(pk, keyed_data);
                                     //find the row in the result.
                                     let resultIdx = result.findIndex(result => result._pk === keyed_data._pk);
                                     //if its a new row, then add it as a "new" to the rollup (performed when an end event is fired, see .on('end')).
@@ -669,6 +651,73 @@ class AzureDatalakeExt {
         }
         catch (err) {
             throw new Error(`SimpleDatalakeClient::ext.compiled has failed -  ${err.message}`);
+        }
+    }
+    modify(props, parserOptions = {}) {
+        return __awaiter(this, void 0, void 0, function* () {
+            try {
+                const { url, pk, modifications } = props;
+                let { targetUrl } = props;
+                let { delimiter } = parserOptions;
+                delimiter = delimiter || ',';
+                targetUrl = targetUrl || `${url}.tmp`;
+                parserOptions['key_values'] = true;
+                const zipped = url.substr(-2) === 'gz';
+                let rowNum = 0;
+                let keys = null;
+                const modstack = modifications.reduce((acc, modification) => Object.assign(acc, { [this.derivePk(pk, modification)]: modification }), {});
+                const result = [];
+                let stream;
+                try {
+                    stream = yield this.client.readableStream({ url });
+                    if (zipped)
+                        stream = stream.pipe(zlib.createGunzip());
+                }
+                catch (err) {
+                    throw new Error(`AzureDatalakeClient::compiled failed to load data from ${url} - ${err.message}`);
+                }
+                const datalake = new client_1.AzureDatalakeClient();
+                const fileClient = datalake.getFileClient({ url: targetUrl });
+                yield fileClient.create();
+                let offset = 0;
+                let resultLength = 0;
+                yield new Promise((resolve, reject) => __awaiter(this, void 0, void 0, function* () {
+                    stream_1.pipeline(yield loaders_1.fromAzureDatalake({ url }), transforms_1.CSVStreamToKeywordObjects(), transforms_1.applyMutations({
+                        pk: 'planning_account',
+                        modifications: []
+                    }), transforms_1.keywordArrayToCSV(), err => {
+                        console.log('---');
+                    });
+                    console.log('!@@@!');
+                    yield new Promise(res => { });
+                    console.log('!!!!!!!!!!!!!!!!!');
+                }));
+            }
+            catch (err) {
+                throw new Error(`SimpleDatalakeClient::ext.modify has failed - ${err.message}`);
+            }
+        });
+    }
+    derivePk(pk, keyed_row) {
+        switch (typeof pk) {
+            case 'string':
+                return keyed_row['pk'];
+            case 'object':
+                if (!Array.isArray(pk))
+                    throw Error(`unable to use argued pk - expected string|string[]|Function - got ${typeof pk}`);
+                return pk.reduce((acc, key) => acc.concat(keyed_row['pk']), '');
+            case 'function':
+                try {
+                    const result = pk(keyed_row);
+                    if (!result)
+                        throw new Error('PK functions must return a truthy result');
+                    return result;
+                }
+                catch (err) {
+                    throw new Error(`pk function thew an error - ${err.message}`);
+                }
+            default:
+                throw new Error(`unable to use argued pk - expected string | string[] | Function - got ${typeof pk}`);
         }
     }
 }

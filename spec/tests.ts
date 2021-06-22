@@ -31,12 +31,34 @@ import {
     AzureDatalakeExt
 } from '../src/ext';
 
+import { pipeline } from 'stream';
+const P = require('stream/promises');
+
+import {
+    CSVStreamToKeywordObjects,
+    keywordObjectsToArray,
+    keywordArrayToCSV,
+    applyMutations,
+    inspect
+} from '../src/transforms';
+
+import {
+    fromAzureDatalake,
+    toAzureDatalake,
+    toGlobalMemory
+} from '../src/loaders';
+
+import {
+    csvReport
+} from '../src/StreamTools';
 
 import * as crypto from 'crypto';
 
+import * as zlib from 'zlib';
+
 describe(`Datalake client tests`, function() {
 
-    this.timeout(120000);
+    this.timeout(1200000);
 
     let instance:AzureDatalakeClient;
     let validURLGunzipped ='https://nusatradeadluat.blob.core.windows.net/simulation-service/scenario-results/SYSTEM/PIZZA-optimization-20201216-0/PIZZA/input/calendar_constraints.csv.gz'
@@ -682,7 +704,7 @@ describe(`Datalake client tests`, function() {
 
         })
 
-        describe.only(`compile`, async () => {
+        describe(`compile`, async () => {
 
             it(`invokes get on valid URLs`, async () => {
 
@@ -731,7 +753,7 @@ describe(`Datalake client tests`, function() {
 
             });
 
-            it.only(`errors gracefully when a pk function errors`, async () => {
+            it(`errors gracefully when a pk function errors`, async () => {
 
                 const instance = new AzureDatalakeClient();
                 let caught = false;
@@ -752,7 +774,7 @@ describe(`Datalake client tests`, function() {
                 
             });
 
-            it.only(`errors gracefully when a PK function returns a falsy result`, async () => {
+            it(`errors gracefully when a PK function returns a falsy result`, async () => {
 
                 const instance = new AzureDatalakeClient();
                 let caught = false;
@@ -815,6 +837,118 @@ describe(`Datalake client tests`, function() {
             });
 
         });
+
+        describe(`modify`, async () => {
+
+            it(`it applies a modification to some existing datafile`, async () => {
+
+                const instance = new AzureDatalakeClient();
+
+                const modification = {
+                    planning_account: "Giant Eagle Inc",
+                    start_date: "20210110",
+                    group_name: "US66C6C306C30CE",
+                    promo_tactic: "General In-Store Promotions",
+                    duration: "14"
+                };
+
+                const result = await instance.ext.modify({
+                    url: 'https://nusatradeadl.blob.core.windows.net/simulation-service/scenario-results/SYSTEM/62b5fcda72cd43958cdc4205ed9376c5/COFFEE%20PARTNERS/output/optimized_simulated.csv.gz',
+                    pk: data => {
+                        return ['planning_account', 'start_date', 'group_name', 'promo_tactic']
+                                .map(key => data[key])
+                                .join('|');
+                    },
+                    modifications: [modification]
+                }, {
+                    delimiter:'|'
+                });
+
+            });
+
+        });
+
+    });
+
+    describe(`Transform tests`, async () => {
+
+        describe(`Loader.fromAzureDatalake`, () => {
+
+            it(`Loader.fromAzureDataLake`, async () => {
+
+                let errored;
+
+                const resolved = await new Promise(async (resolve, reject) => {
+
+                    pipeline(
+                        await fromAzureDatalake({url: 'https://nusatradeadl.blob.core.windows.net/dev/test/reference_calendar.csv.gz'}),
+                        CSVStreamToKeywordObjects(),
+                        inspect(),
+                        err => {
+                            if(err) {
+                                errored = true;
+                                return reject(err);
+                            }
+                            else
+                                resolve(true);
+                        }
+                    )
+                });
+
+                assert(resolved === true && errored === undefined, 'failed');
+
+            });
+        });
+
+        describe.only(`Loader.toAzureDataLake`, () => {
+
+            it(`Applies mutations to the mutation pipeline`, async () => {
+
+                let errored;
+
+                const resolved = await new Promise(async (resolve, reject) => {
+
+                    pipeline(
+                        await fromAzureDatalake({url: 'https://nusatradeadl.blob.core.windows.net/dev/test/reference_calendar.csv.gz'}),
+                        CSVStreamToKeywordObjects(),
+                        applyMutations({
+                            pk: data => {
+                                const {
+                                    planning_account,
+                                    group_name,
+                                    start_date,
+                                    promo_tactic
+                                } = data;
+                                return [planning_account, group_name, start_date, promo_tactic].join('|');
+                            },
+                            modifications: [
+                                {
+                                    "planning_account": "AWG KC - Combined",
+                                    "start_date": "20210103",
+                                    "promo_tactic": "EDLP",
+                                    "group_name":"USSS2S208S208BK",
+                                    "duration": "9999"
+                                }
+                            ]
+                        }),
+                        await keywordArrayToCSV({delimiter:'|'}),
+                        await toAzureDatalake({url: 'https://nusatradeadl.blob.core.windows.net/dev/test/out_test.csv.gz'}),
+                        err => {
+                            if(err) {
+                                errored = true;
+                                return reject(err);
+                            }
+                            else
+                                resolve(true);
+                        }
+                    )
+                });
+
+                assert(resolved === true && errored === undefined, 'failed');
+
+            });
+        });
+        
 
     });
 

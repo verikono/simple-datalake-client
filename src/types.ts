@@ -111,3 +111,10 @@ export interface extCompileProps {
     urls: string[];
     pk: string|string[]|Function;
 }
+
+export interface modifyFileProps {
+    url: string;
+    targetUrl?: string;
+    pk: string|string[]|Function;
+    modifications:Array<any>
+}
