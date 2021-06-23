@@ -57,17 +57,24 @@ function toAzureDatalake(options) {
                 this.offset = 0;
                 this.chunks = [];
                 this.content = '';
+                this.okToReplace = false;
                 this.url = options.url;
-                this.spoolsize = options.spoolsize || 100;
+                this.okToReplace = options.replace === undefined ? false : options.replace;
             }
             connect() {
                 return __awaiter(this, void 0, void 0, function* () {
                     try {
                         this.client = new storage_file_datalake_1.DataLakeFileClient(this.url, new identity_1.DefaultAzureCredential());
+                        if (yield this.client.exists(this.url)) {
+                            if (!this.okToReplace) {
+                                throw new Error(`data exists at at ${this.url} : Argue {replace:true} if this is ok.`);
+                            }
+                            yield this.client.delete();
+                        }
                         yield this.client.create();
                     }
                     catch (err) {
-                        console.log('-');
+                        throw new Error(`ToAzureDataLake has failed building the datalake client - ${err.message}`);
                     }
                 });
             }

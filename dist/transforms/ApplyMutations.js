@@ -6,12 +6,26 @@ const stream_1 = require("stream");
  * Apply modifications across data represented in key/value objects.
  */
 class TxApplyMutations extends stream_1.Transform {
-    // matches=[];
+    /**
+     *
+     * @param options keyword object
+     * @param options.pk String|String[]|Function - if a string the pk is assumed to be the column name of the primary key in the data, an array is a compound pk and a function
+     * @param options.report Object - argue an empty object which will be populated with the operations performed on this pipeline asset.
+     */
     constructor(options) {
         super();
         options = options || {};
         this.pk = options.pk;
         this.modifications = options.modifications || [];
+        this.report = options.report || null;
+        if (this.report) {
+            this.report.modifications = options.modifications;
+            this.report.modified = [];
+            this.report.success = false;
+            this.report.rowsProcessed = 0;
+            this.report.rowsExpectedForModification = options.modifications.length;
+            this.report.rowsModified = 0;
+        }
     }
     derivePK(keyed_row) {
         switch (typeof this.pk) {
@@ -44,6 +58,13 @@ class TxApplyMutations extends stream_1.Transform {
     applyModifications(keyed_row) {
         const pk = this.derivePK(keyed_row);
         const mod = this.modifications.find(mod => this.derivePK(mod) === pk) || {};
+        if (this.report) {
+            this.report.rowsProcessed++;
+            if (Object.keys(mod).length) {
+                this.report.modified.push(mod);
+                this.report.rowsModified++;
+            }
+        }
         return Object.assign(keyed_row, mod);
     }
     _transform(chunk, encoding, callback) {
@@ -55,15 +76,6 @@ class TxApplyMutations extends stream_1.Transform {
             catch (err) {
                 throw new Error(`failed parsing a chunk from JSON`);
             }
-            // const p = JSON.parse(chunk.toString());
-            // p.forEach(obj => {
-            //     const conflict = this.matches.find(m => m === obj.promo_id)
-            //     if(conflict) {
-            //         console.log('#######');
-            //     }
-            //     this.matches.push(obj.promo_id);
-            // })
-            // console.log('chunk');
             if (Array.isArray(data)) {
                 const rows = data.map(row => this.applyModifications(row));
                 this.push(JSON.stringify(rows));
@@ -76,6 +88,11 @@ class TxApplyMutations extends stream_1.Transform {
         catch (err) {
             callback(new Error(`TxApplyMutations has failed - ${err.message}`));
         }
+    }
+    _final(callback) {
+        if (this.report)
+            this.report.success = true;
+        callback();
     }
 }
 exports.TxApplyMutations = TxApplyMutations;

@@ -29,7 +29,6 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AzureDatalakeExt = void 0;
-const client_1 = require("./client");
 const parse_1 = require("@fast-csv/parse");
 const stream_1 = require("stream");
 const zlib = __importStar(require("zlib"));
@@ -659,39 +658,22 @@ class AzureDatalakeExt {
                 const { url, pk, modifications } = props;
                 let { targetUrl } = props;
                 let { delimiter } = parserOptions;
+                const report = {};
                 delimiter = delimiter || ',';
                 targetUrl = targetUrl || `${url}.tmp`;
                 parserOptions['key_values'] = true;
-                const zipped = url.substr(-2) === 'gz';
-                let rowNum = 0;
-                let keys = null;
-                const modstack = modifications.reduce((acc, modification) => Object.assign(acc, { [this.derivePk(pk, modification)]: modification }), {});
-                const result = [];
-                let stream;
-                try {
-                    stream = yield this.client.readableStream({ url });
-                    if (zipped)
-                        stream = stream.pipe(zlib.createGunzip());
-                }
-                catch (err) {
-                    throw new Error(`AzureDatalakeClient::compiled failed to load data from ${url} - ${err.message}`);
-                }
-                const datalake = new client_1.AzureDatalakeClient();
-                const fileClient = datalake.getFileClient({ url: targetUrl });
-                yield fileClient.create();
-                let offset = 0;
-                let resultLength = 0;
                 yield new Promise((resolve, reject) => __awaiter(this, void 0, void 0, function* () {
                     stream_1.pipeline(yield loaders_1.fromAzureDatalake({ url }), transforms_1.CSVStreamToKeywordObjects(), transforms_1.applyMutations({
-                        pk: 'planning_account',
-                        modifications: []
-                    }), transforms_1.keywordArrayToCSV(), err => {
-                        console.log('---');
+                        pk,
+                        modifications,
+                        report
+                    }), transforms_1.keywordArrayToCSV({ delimiter }), yield loaders_1.toAzureDatalake({ url, replace: true }), err => {
+                        if (err)
+                            return reject(err);
+                        resolve(true);
                     });
-                    console.log('!@@@!');
-                    yield new Promise(res => { });
-                    console.log('!!!!!!!!!!!!!!!!!');
                 }));
+                return report;
             }
             catch (err) {
                 throw new Error(`SimpleDatalakeClient::ext.modify has failed - ${err.message}`);

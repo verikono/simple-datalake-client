@@ -692,12 +692,14 @@ describe(`Datalake client tests`, function() {
 
                 const instance = new AzureDatalakeClient();
 
-                const url = validURL;
+                const url = "https://nusatradeadl.blob.core.windows.net/simulation-service/scenario-results/bnorris@enterrasolutions.com/e47095955bc849a79eb2d4a32584ffaf/COFFEE PARTNERS/input/reference_calendar.csv.gz"; //validURL;
+
+                const delimiter = "|";
                 const exists = await instance.exists({url});
                 if(!exists)
                     throw Error(`Test file does not exist`);
 
-                const result = await instance.ext.get({url});
+                const result = await instance.ext.get({url},{delimiter});
 
                 assert(result && Array.isArray(result) && result.length, 'failed');
             });
@@ -844,6 +846,7 @@ describe(`Datalake client tests`, function() {
 
                 const url = 'https://nusatradeadl.blob.core.windows.net/dev/test/reference_calendar.csv.gz';
                 const instance = new AzureDatalakeClient();
+                let result;
 
                 const modification = {
                     planning_account: "AWG KC - Combined",
@@ -853,7 +856,7 @@ describe(`Datalake client tests`, function() {
                     duration: "999"
                 };
 
-                await instance.ext.modify({
+                result = await instance.ext.modify({
                     url: 'https://nusatradeadl.blob.core.windows.net/dev/test/reference_calendar.csv.gz',
                     pk: data => {
                         return ['planning_account', 'start_date', 'group_name', 'promo_tactic']
@@ -863,9 +866,17 @@ describe(`Datalake client tests`, function() {
                     modifications: [modification]
                 }, { delimiter:'|' });
 
+                assert(!!result, 'failed - did not get a report as the result');
+                assert(Array.isArray(result.modifications) && result.modifications.length === 1, 'failed - invalid modifications returned, expected array and exactly 1 in length');
+                assert(Array.isArray(result.modified) && result.modified.length === 1, 'failed - invalid prop modified returned, expected array and exactly 1 in length');
+                assert(result.rowsExpectedForModification === 1, 'failed - expected prop rowsExpectedForModificaiton to be 1');
+                assert(result.rowsModified === 1, 'failed - expected rowsModified to be 1');
+                assert(result.rowsProcessed && typeof result.rowsProcessed === 'number' && result.rowsProcessed > 1, 'failed - expected prop rowsProcessed to be a number greater than 1');
+                assert(result.success === true, 'failed - did not indicate the process was successful');
+
                 let found = false;
 
-                const result = await instance.ext.forEach({
+                result = await instance.ext.forEach({
                     url,
                     fn: (row,i) => {
                         if(Object.keys(modification).every(key => modification[key] === row[key])) {
@@ -885,7 +896,7 @@ describe(`Datalake client tests`, function() {
 
     });
 
-    describe(`Transform tests`, async () => {
+    describe.skip(`Transform tests`, async () => {
 
         describe(`Loader.fromAzureDatalake`, () => {
 

@@ -887,6 +887,8 @@ export class AzureDatalakeExt {
                 delimiter
             } = parserOptions;
 
+            const report = {};
+
             delimiter = delimiter || ',';
             targetUrl = targetUrl || `${url}.tmp`;
             parserOptions['key_values'] = true;
@@ -898,7 +900,8 @@ export class AzureDatalakeExt {
                     CSVStreamToKeywordObjects(),
                     applyMutations({
                         pk,
-                        modifications
+                        modifications,
+                        report
                     }),
                     keywordArrayToCSV({delimiter}),
                     await toAzureDatalake({url, replace:true}),
@@ -911,6 +914,7 @@ export class AzureDatalakeExt {
 
             })
 
+            return report;
         }
         catch( err ) {
 

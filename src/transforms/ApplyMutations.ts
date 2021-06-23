@@ -3,6 +3,7 @@ import { Transform } from 'stream';
 interface TxApplyMutationsProps {
     pk: string|string[]|Function;
     modifications: Array<any>;
+    report?:any;
 }
 /**
  * Apply modifications across data represented in key/value objects.
@@ -11,8 +12,14 @@ export class TxApplyMutations extends Transform {
 
     pk;
     modifications;
-    // matches=[];
+    report;
 
+    /**
+     * 
+     * @param options keyword object
+     * @param options.pk String|String[]|Function - if a string the pk is assumed to be the column name of the primary key in the data, an array is a compound pk and a function
+     * @param options.report Object - argue an empty object which will be populated with the operations performed on this pipeline asset.
+     */
     constructor( options ) {
 
         super();
@@ -20,7 +27,16 @@ export class TxApplyMutations extends Transform {
         options = options || {};
 
         this.pk = options.pk;
-        this.modifications = options.modifications || [];    
+        this.modifications = options.modifications || [];
+        this.report = options.report || null;
+        if(this.report) {
+            this.report.modifications = options.modifications;
+            this.report.modified = [];
+            this.report.success = false;
+            this.report.rowsProcessed = 0;
+            this.report.rowsExpectedForModification = options.modifications.length;
+            this.report.rowsModified = 0;
+        }
     }
 
     derivePK( keyed_row ) {
@@ -63,6 +79,13 @@ export class TxApplyMutations extends Transform {
 
         const pk = this.derivePK(keyed_row);
         const mod = this.modifications.find(mod => this.derivePK(mod) === pk) || {};
+        if(this.report) {
+            this.report.rowsProcessed++;
+            if(Object.keys(mod).length) {
+                this.report.modified.push(mod);
+                this.report.rowsModified++;
+            }
+        }
         return Object.assign(keyed_row, mod);
     }
 
@@ -94,6 +117,12 @@ export class TxApplyMutations extends Transform {
             callback(new Error(`TxApplyMutations has failed - ${err.message}`));
         }
 
+    }
+
+    _final( callback ) {
+        if(this.report)
+            this.report.success = true;
+        callback();
     }
 
 }

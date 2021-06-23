@@ -116,5 +116,6 @@ export interface modifyFileProps {
     url: string;
     targetUrl?: string;
     pk: string|string[]|Function;
-    modifications:Array<any>
+    modifications:Array<any>;
+    report?:{}; 
 }
