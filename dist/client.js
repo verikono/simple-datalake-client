@@ -216,6 +216,16 @@ class AzureDatalakeClient {
         const fileClient = new storage_file_datalake_1.DataLakeFileClient(url, this.getCredential());
         return fileClient;
     }
+    getFileSystemClient(props) {
+        const { url } = props;
+        try {
+            const fileSystemClient = new storage_file_datalake_1.DataLakeFileSystemClient(url, this.getCredential());
+            return fileSystemClient;
+        }
+        catch (err) {
+            throw new Error(`AzureDatalakeClient::getFileSystemClient failed - ${err.message}`);
+        }
+    }
     /**
      * Get the Azure credential. Currently only gains it via environment variables.
      *

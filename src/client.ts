@@ -4,6 +4,7 @@ import {
 
 import {
     DataLakeServiceClient,
+    DataLakeFileSystemClient,
     DataLakeFileClient
 } from '@azure/storage-file-datalake';
 
@@ -255,6 +256,18 @@ export class AzureDatalakeClient {
         const fileClient = new DataLakeFileClient(url, this.getCredential());
         return fileClient;
 
+    }
+
+    getFileSystemClient( props ):DataLakeFileSystemClient {
+
+        const { url } = props;
+        try {
+            const fileSystemClient = new DataLakeFileSystemClient(url, this.getCredential());
+            return fileSystemClient;
+        }
+        catch( err ) {
+            throw new Error(`AzureDatalakeClient::getFileSystemClient failed - ${err.message}`);
+        } 
     }
 
     /**

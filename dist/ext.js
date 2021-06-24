@@ -57,6 +57,10 @@ class AzureDatalakeExt {
             return this.mapSlices({ url, mapper: data => data }, parserOptions);
         });
     }
+    find() {
+        return __awaiter(this, void 0, void 0, function* () {
+        });
+    }
     /**
      * Perform a reduce operation upon a stored CSV file in the datalake, optionally storing and overwriting the result.
      *

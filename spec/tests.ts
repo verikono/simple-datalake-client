@@ -706,7 +706,7 @@ describe(`Datalake client tests`, function() {
 
         })
 
-        describe(`compile`, async () => {
+        describe.only(`compile`, async () => {
 
             it(`invokes get on valid URLs`, async () => {
 
@@ -840,7 +840,7 @@ describe(`Datalake client tests`, function() {
 
         });
 
-        describe.only(`modify`, async () => {
+        describe(`modify`, async () => {
 
             it(`it applies a modification to some existing datafile`, async () => {
 
