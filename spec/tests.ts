@@ -182,6 +182,23 @@ describe(`Datalake client tests`, function() {
 
         });
         
+        describe('_isURLDirectory', async () => {
+
+            it(`Correctly identifies a valid directory URL`, async () => {
+                
+                const validDirectoryUrl = 'https://nusatradeadl.blob.core.windows.net/dev/test2';
+                const validFileUrl = 'https://nusatradeadl.blob.core.windows.net/dev/test2/reference_calendar.csv.gz';
+
+                const instance = new AzureDatalakeClient();
+                const directoryIsDirectory = await instance._isURLDirectory(validDirectoryUrl);
+                const filesIsDirectory = await instance._isURLDirectory(validFileUrl);
+
+                assert(directoryIsDirectory === true && filesIsDirectory === false, 'failed');
+
+            });
+
+        });
+
         describe(`getCredential`, () => {
 
             const instance = new  AzureDatalakeClient();
@@ -326,6 +343,44 @@ describe(`Datalake client tests`, function() {
 
 
         });
+
+        describe.only('copy', () => {
+
+            it(`copies a file`, async () => {
+
+                const instance = new  AzureDatalakeClient();
+
+                const source = process.env.TEST_VALID_FILE_URL;
+                const target = process.env.TEST_VALID_FILE_TARGET;
+
+                assert((await instance.exists({url: source})) === true, 'failed - source file does not exist to perform test with');
+
+                const result = await instance.copy({source, target});
+
+                assert(result === true, 'failed - expected copy to return true');
+
+                assert((await instance.exists({url: target})) === true, 'failed - target does not appear to exist');
+
+            });
+
+            it(`copies a directory`, async () => {
+
+                const instance = new  AzureDatalakeClient();
+
+                const source = process.env.TEST_VALID_DIRECTORY_URL;
+                const target = process.env.TEST_VALID_DIRECTORY_TARGET;
+
+                assert((await instance.exists({url: source})) === true, 'failed - source file does not exist to perform test with');
+
+                const result = await instance.copy({source, target});
+
+                assert(result === true, 'failed - expected copy to return true');
+                assert((await instance.exists({url: target})) === true, 'failed - target does not appear to exist');
+
+
+            })
+
+        })
 
     });
 
@@ -706,7 +761,7 @@ describe(`Datalake client tests`, function() {
 
         })
 
-        describe.only(`compile`, async () => {
+        describe(`compile`, async () => {
 
             it(`invokes get on valid URLs`, async () => {
 
@@ -894,9 +949,11 @@ describe(`Datalake client tests`, function() {
 
         });
 
+
+
     });
 
-    describe.skip(`Transform tests`, async () => {
+    describe(`Transform tests`, async () => {
 
         describe(`Loader.fromAzureDatalake`, () => {
 

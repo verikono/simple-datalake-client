@@ -38,6 +38,13 @@ export interface parsedURL {
 
     //the filename (from example: myfile.txt)
     filename:string
+
+    //the url of the filesystem
+    filesystem:string;
+
+    //the url as provided.
+    url:string;
+
 }
 
 
@@ -118,4 +125,9 @@ export interface modifyFileProps {
     pk: string|string[]|Function;
     modifications:Array<any>;
     report?:{}; 
+}
+
+export interface copyProps {
+    source: string;
+    target: string;
 }

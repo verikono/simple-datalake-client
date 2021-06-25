@@ -5,7 +5,8 @@ import {
 import {
     DataLakeServiceClient,
     DataLakeFileSystemClient,
-    DataLakeFileClient
+    DataLakeFileClient,
+    DataLakeDirectoryClient
 } from '@azure/storage-file-datalake';
 
 
@@ -165,6 +166,106 @@ export class AzureDatalakeClient {
 
     }
 
+
+    /**
+     * Copy the contents at a URL to another URL
+     * 
+     * @param props
+     * @param props.source the URL of the source file or directory (copying from source to target)
+     * @param props.target the URL of the target file or directory (copying from source to target)
+     * 
+     * @returns Promise<boolean>
+     */
+    async copy( props:I.copyProps ):Promise<boolean> {
+
+        try {
+
+            let {
+                source,
+                target
+            } = props;
+
+            const isDirectory = await this._isURLDirectory(source);
+
+            if(isDirectory) {
+
+                source = source.substr(-1) === '/' ? source.substr(0, source.length-1) : source;
+                target = target.substr(-1) === '/' ? target.substr(0, target.length-1) : target;
+
+                const parsedSource = this._parseURL(source);
+                const parsedTarget = this._parseURL(target);
+
+                const fsclient = this.getFileSystemClient({url: parsedSource.filesystem});
+
+                let itr= 1;
+                const files = [];
+                for await (const path of fsclient.listPaths({recursive:true})) {
+                    if(!path.isDirectory && path.name.includes(parsedSource.file)) {
+                        //trim to filename relative to url
+                        const relativeSource = path.name.replace(parsedSource.file, '');
+
+                        files.push({
+                            source: parsedSource.url+relativeSource,
+                            target: parsedTarget.url+relativeSource
+                        });
+                    }
+                }
+
+                if(files.length) {
+                    await Promise.all(files.map(({source, target}) =>
+                        this.copy({source, target})
+                    ));
+                    return true;
+                }
+                else {
+                    throw new Error(``)
+                }
+
+            }
+            else { //assumed to be a file.
+                
+                const sourceClient = this.getFileClient({url: source});
+                const targetClient = this.getFileClient({url: target});
+
+                await new Promise(async (resolve, reject) => {
+
+                    await targetClient.create();
+                    const readStream = await sourceClient.read();
+
+                    const promises = [];
+                    const chunks = [];
+                    let offset = 0;
+
+                    readStream.readableStreamBody.on('data', async data => {
+                        try {
+                            await targetClient.append(data, offset, data.length)
+                            const promise = await targetClient.flush(offset+data.length);
+                            offset = offset+data.length;
+                            promises.push(promise);
+                            // chunks.push(data);
+                        }
+                        catch( err ) {
+                            reject(err);
+                        }
+                    });
+
+                    readStream.readableStreamBody.on('end', async () => {
+                        await Promise.all(promises);
+                        resolve(true);
+                    });
+
+                    readStream.readableStreamBody.on('error', reject);
+                });
+            }
+
+            return true;
+        }
+        catch( err ) {
+
+            throw Error(`AzureDatalakeClient::copy failed - ${err.message}`);
+        }
+    }
+
     /**
      * Upload data to a file/blob at a specific URL
      * 
@@ -270,6 +371,18 @@ export class AzureDatalakeClient {
         } 
     }
 
+    getDirectoryClient( props ):DataLakeDirectoryClient {
+
+        const { url } = props;
+        try {
+            const datalakeDirectoryClient = new DataLakeDirectoryClient(url, this.getCredential());
+            return datalakeDirectoryClient
+        }
+        catch( err ) {
+            throw new Error(`AzureDatalakeClient::getDirectoryClient failed - ${err.message}`);
+        }
+    }
+
     /**
      * Get the Azure credential. Currently only gains it via environment variables.
      * 
@@ -305,6 +418,28 @@ export class AzureDatalakeClient {
     }
 
     /**
+     * Determine if a URL is a directory/folder on the Azure datalake
+     * 
+     * @param url string the url being evaluated
+     * 
+     * @returns <Promise<boolean>> true if the url is determined to actaully be a folder/directory.
+     */
+    async _isURLDirectory( url:string ) {
+
+        try {
+
+            const client = this.getDirectoryClient({url});
+            const { metadata } = await client.getProperties();
+            //nb true is a the string 'true'
+            return metadata.hasOwnProperty('hdi_isfolder') && metadata.hdi_isfolder == 'true';
+        }
+        catch( err ) {
+            throw new Error(`AzureDatalakeClient::_isURLDirectory has failed - ${err.message}`);
+        }
+
+    }
+
+    /**
      * From an AZURE** url, parse to a set of useful values properties
      * 
      * @param url string the AZURE url such as one extracted from azure storage explorer.
@@ -323,9 +458,11 @@ export class AzureDatalakeClient {
                 storageType: spl[2].split('.')[1],
                 hostURL: spl.slice(0, 3).join('/'),
                 account: spl[2].split('.')[0],
-                file: spl.slice(3).join('/'),
+                file: spl.slice(4).join('/'),
                 path: spl.slice(3,-1).join('/'),
-                filename: spl[spl.length-1]
+                filename: spl[spl.length-1],
+                filesystem: spl.splice(0, 4).join('/'),
+                url
             }
 
         }
