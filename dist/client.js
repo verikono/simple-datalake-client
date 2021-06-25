@@ -163,7 +163,7 @@ class AzureDatalakeClient {
      * @returns Promise<boolean>
      */
     copy(props) {
-        var e_1, _a;
+        var e_1, _d;
         return __awaiter(this, void 0, void 0, function* () {
             try {
                 let { source, target } = props;
@@ -177,22 +177,27 @@ class AzureDatalakeClient {
                     let itr = 1;
                     const files = [];
                     try {
-                        for (var _b = __asyncValues(fsclient.listPaths({ recursive: true })), _c; _c = yield _b.next(), !_c.done;) {
-                            const path = _c.value;
+                        for (var _e = __asyncValues(fsclient.listPaths({ recursive: true })), _f; _f = yield _e.next(), !_f.done;) {
+                            const path = _f.value;
                             if (!path.isDirectory && path.name.includes(parsedSource.file)) {
                                 //trim to filename relative to url
                                 const relativeSource = path.name.replace(parsedSource.file, '');
-                                files.push({
-                                    source: parsedSource.url + relativeSource,
-                                    target: parsedTarget.url + relativeSource
-                                });
+                                //listPaths also includes DELETED items(like really!?) without the option to exlude them..
+                                //this we need to make sure we are copying a file which is there according to the user.
+                                const sourceExists = yield this.exists({ url: parsedSource.url + relativeSource });
+                                if (sourceExists) {
+                                    files.push({
+                                        source: parsedSource.url + relativeSource,
+                                        target: parsedTarget.url + relativeSource
+                                    });
+                                }
                             }
                         }
                     }
                     catch (e_1_1) { e_1 = { error: e_1_1 }; }
                     finally {
                         try {
-                            if (_c && !_c.done && (_a = _b.return)) yield _a.call(_b);
+                            if (_f && !_f.done && (_d = _e.return)) yield _d.call(_e);
                         }
                         finally { if (e_1) throw e_1.error; }
                     }
@@ -210,26 +215,24 @@ class AzureDatalakeClient {
                     yield new Promise((resolve, reject) => __awaiter(this, void 0, void 0, function* () {
                         yield targetClient.create();
                         const readStream = yield sourceClient.read();
+                        const appendPromises = [];
                         const promises = [];
                         const chunks = [];
                         let offset = 0;
-                        readStream.readableStreamBody.on('data', (data) => __awaiter(this, void 0, void 0, function* () {
+                        readStream.readableStreamBody.on('data', (data, a, b, c) => __awaiter(this, void 0, void 0, function* () {
+                            const _a = a, _b = b, _c = c;
+                            chunks.push(data);
+                        }));
+                        readStream.readableStreamBody.on('end', () => __awaiter(this, void 0, void 0, function* () {
                             try {
-                                const start = offset;
-                                const flush = start + data.length;
-                                offset = flush;
-                                yield Promise.all(promises);
-                                yield targetClient.append(data, start, data.length);
-                                const promise = yield targetClient.flush(flush);
-                                promises.push(promise);
+                                const totalBuffer = Buffer.concat(chunks);
+                                yield targetClient.append(totalBuffer, 0, totalBuffer.length);
+                                yield targetClient.flush(totalBuffer.length);
+                                resolve(true);
                             }
                             catch (err) {
                                 reject(err);
                             }
-                        }));
-                        readStream.readableStreamBody.on('end', () => __awaiter(this, void 0, void 0, function* () {
-                            yield Promise.all(promises);
-                            resolve(true);
                         }));
                         readStream.readableStreamBody.on('error', reject);
                     }));

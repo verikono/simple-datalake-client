@@ -197,17 +197,23 @@ export class AzureDatalakeClient {
 
                 const fsclient = this.getFileSystemClient({url: parsedSource.filesystem});
 
+
                 let itr= 1;
                 const files = [];
-                for await (const path of fsclient.listPaths({recursive:true})) {
+                for await (const path of fsclient.listPaths({recursive: true})) {
                     if(!path.isDirectory && path.name.includes(parsedSource.file)) {
                         //trim to filename relative to url
                         const relativeSource = path.name.replace(parsedSource.file, '');
 
-                        files.push({
-                            source: parsedSource.url+relativeSource,
-                            target: parsedTarget.url+relativeSource
-                        });
+                        //listPaths also includes DELETED items(like really!?) without the option to exlude them..
+                        //this we need to make sure we are copying a file which is there according to the user.
+                        const sourceExists = await this.exists({url:parsedSource.url+relativeSource});
+                        if(sourceExists) {
+                            files.push({
+                                source: parsedSource.url+relativeSource,
+                                target: parsedTarget.url+relativeSource
+                            });
+                        }
                     }
                 }
 
@@ -232,30 +238,28 @@ export class AzureDatalakeClient {
                     await targetClient.create();
                     const readStream = await sourceClient.read();
 
+                    const appendPromises = [];
                     const promises = [];
                     const chunks = [];
                     let offset = 0;
 
-                    readStream.readableStreamBody.on('data', async data => {
+                    readStream.readableStreamBody.on('data', async (data,a,b,c) => {
+                        const _a = a, _b=b, _c=c;
+                        chunks.push(data);
+                    });
+
+                    readStream.readableStreamBody.on('end', async () => {
 
                         try {
 
-                            const start = offset;
-                            const flush = start+data.length;
-                            offset = flush;
-                            await Promise.all(promises);
-                            await targetClient.append(data, start, data.length)
-                            const promise = await targetClient.flush(flush);
-                            promises.push(promise);
+                            const totalBuffer = Buffer.concat(chunks);
+                            await targetClient.append(totalBuffer, 0, totalBuffer.length);
+                            await targetClient.flush(totalBuffer.length);
+                            resolve(true);
                         }
                         catch( err ) {
                             reject(err);
                         }
-                    });
-
-                    readStream.readableStreamBody.on('end', async () => {
-                        await Promise.all(promises);
-                        resolve(true);
                     });
 
                     readStream.readableStreamBody.on('error', reject);
@@ -380,7 +384,7 @@ export class AzureDatalakeClient {
         const { url } = props;
         try {
             const datalakeDirectoryClient = new DataLakeDirectoryClient(url, this.getCredential());
-            return datalakeDirectoryClient
+            return datalakeDirectoryClient;
         }
         catch( err ) {
             throw new Error(`AzureDatalakeClient::getDirectoryClient failed - ${err.message}`);

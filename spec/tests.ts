@@ -363,7 +363,7 @@ describe(`Datalake client tests`, function() {
 
             });
 
-            it(`copies a directory`, async () => {
+            it.skip(`copies a directory`, async () => {
 
                 const instance = new  AzureDatalakeClient();
 
@@ -378,7 +378,25 @@ describe(`Datalake client tests`, function() {
                 assert((await instance.exists({url: target})) === true, 'failed - target does not appear to exist');
 
 
-            })
+            });
+
+            it.skip(`copies 3 large files simulatenously`, async () => {
+
+                const instance = new  AzureDatalakeClient();
+
+                const largeFile1 = process.env.TEST_VALID_LARGE_FILE1;
+                const largeFile2 = process.env.TEST_VALID_LARGE_FILE2;
+                const largeFile3 = process.env.TEST_VALID_LARGE_FILE3;
+
+                const existPromises = [];
+                [largeFile1, largeFile2, largeFile3].forEach(url => {
+                    existPromises.push(instance.exists({url}))
+                })
+                await Promise.all(existPromises);
+                existPromises.forEach((result,i) => {
+                    assert(result === true, `failed - ${i+1} does not exist`);
+                })
+            });
 
         })
 
