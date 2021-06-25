@@ -238,11 +238,13 @@ export class AzureDatalakeClient {
 
                     readStream.readableStreamBody.on('data', async data => {
                         try {
-                            await targetClient.append(data, offset, data.length)
-                            const promise = await targetClient.flush(offset+data.length);
-                            offset = offset+data.length;
+                            const start = offset;
+                            const flush = start+data.length;
+                            offset = flush;
+
+                            await targetClient.append(data, start, data.length)
+                            const promise = await targetClient.flush(flush);
                             promises.push(promise);
-                            // chunks.push(data);
                         }
                         catch( err ) {
                             reject(err);
