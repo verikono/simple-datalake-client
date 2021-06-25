@@ -163,7 +163,7 @@ class AzureDatalakeClient {
      * @returns Promise<boolean>
      */
     copy(props) {
-        var e_1, _d;
+        var e_1, _a;
         return __awaiter(this, void 0, void 0, function* () {
             try {
                 let { source, target } = props;
@@ -177,8 +177,8 @@ class AzureDatalakeClient {
                     let itr = 1;
                     const files = [];
                     try {
-                        for (var _e = __asyncValues(fsclient.listPaths({ recursive: true })), _f; _f = yield _e.next(), !_f.done;) {
-                            const path = _f.value;
+                        for (var _b = __asyncValues(fsclient.listPaths({ recursive: true })), _c; _c = yield _b.next(), !_c.done;) {
+                            const path = _c.value;
                             if (!path.isDirectory && path.name.includes(parsedSource.file)) {
                                 //trim to filename relative to url
                                 const relativeSource = path.name.replace(parsedSource.file, '');
@@ -197,7 +197,7 @@ class AzureDatalakeClient {
                     catch (e_1_1) { e_1 = { error: e_1_1 }; }
                     finally {
                         try {
-                            if (_f && !_f.done && (_d = _e.return)) yield _d.call(_e);
+                            if (_c && !_c.done && (_a = _b.return)) yield _a.call(_b);
                         }
                         finally { if (e_1) throw e_1.error; }
                     }
@@ -215,19 +215,14 @@ class AzureDatalakeClient {
                     yield new Promise((resolve, reject) => __awaiter(this, void 0, void 0, function* () {
                         yield targetClient.create();
                         const readStream = yield sourceClient.read();
-                        const appendPromises = [];
-                        const promises = [];
                         const chunks = [];
-                        let offset = 0;
-                        readStream.readableStreamBody.on('data', (data, a, b, c) => __awaiter(this, void 0, void 0, function* () {
-                            const _a = a, _b = b, _c = c;
+                        readStream.readableStreamBody.on('data', (data) => __awaiter(this, void 0, void 0, function* () {
                             chunks.push(data);
                         }));
                         readStream.readableStreamBody.on('end', () => __awaiter(this, void 0, void 0, function* () {
                             try {
                                 const totalBuffer = Buffer.concat(chunks);
-                                yield targetClient.append(totalBuffer, 0, totalBuffer.length);
-                                yield targetClient.flush(totalBuffer.length);
+                                yield targetClient.upload(totalBuffer);
                                 resolve(true);
                             }
                             catch (err) {

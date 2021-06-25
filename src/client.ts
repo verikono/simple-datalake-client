@@ -238,13 +238,9 @@ export class AzureDatalakeClient {
                     await targetClient.create();
                     const readStream = await sourceClient.read();
 
-                    const appendPromises = [];
-                    const promises = [];
                     const chunks = [];
-                    let offset = 0;
 
-                    readStream.readableStreamBody.on('data', async (data,a,b,c) => {
-                        const _a = a, _b=b, _c=c;
+                    readStream.readableStreamBody.on('data', async data => {
                         chunks.push(data);
                     });
 
@@ -253,8 +249,7 @@ export class AzureDatalakeClient {
                         try {
 
                             const totalBuffer = Buffer.concat(chunks);
-                            await targetClient.append(totalBuffer, 0, totalBuffer.length);
-                            await targetClient.flush(totalBuffer.length);
+                            await targetClient.upload(totalBuffer);
                             resolve(true);
                         }
                         catch( err ) {
