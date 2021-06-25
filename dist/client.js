@@ -218,6 +218,7 @@ class AzureDatalakeClient {
                                 const start = offset;
                                 const flush = start + data.length;
                                 offset = flush;
+                                yield Promise.all(promises);
                                 yield targetClient.append(data, start, data.length);
                                 const promise = yield targetClient.flush(flush);
                                 promises.push(promise);
