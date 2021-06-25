@@ -38,6 +38,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.AzureDatalakeClient = void 0;
 const identity_1 = require("@azure/identity");
 const storage_file_datalake_1 = require("@azure/storage-file-datalake");
+const zlib = __importStar(require("zlib"));
 const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
 const stream_1 = require("stream");
@@ -156,6 +157,8 @@ class AzureDatalakeClient {
     /**
      * Copy the contents at a URL to another URL
      *
+     * If the target is a .gz file and the source is not, the method will gzip compress it.
+     *
      * @param props
      * @param props.source the URL of the source file or directory (copying from source to target)
      * @param props.target the URL of the target file or directory (copying from source to target)
@@ -210,6 +213,7 @@ class AzureDatalakeClient {
                     }
                 }
                 else { //assumed to be a file.
+                    const gzipTarget = source.substr(-3) !== '.gz' && target.substr(-3) === '.gz';
                     const sourceClient = this.getFileClient({ url: source });
                     const targetClient = this.getFileClient({ url: target });
                     yield new Promise((resolve, reject) => __awaiter(this, void 0, void 0, function* () {
@@ -221,7 +225,16 @@ class AzureDatalakeClient {
                         }));
                         readStream.readableStreamBody.on('end', () => __awaiter(this, void 0, void 0, function* () {
                             try {
-                                const totalBuffer = Buffer.concat(chunks);
+                                let totalBuffer = Buffer.concat(chunks);
+                                if (gzipTarget) {
+                                    totalBuffer = yield new Promise((resolve, reject) => {
+                                        zlib.gzip(totalBuffer, (err, result) => {
+                                            if (err)
+                                                return reject(err);
+                                            resolve(result);
+                                        });
+                                    });
+                                }
                                 yield targetClient.upload(totalBuffer);
                                 resolve(true);
                             }

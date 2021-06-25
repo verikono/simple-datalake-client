@@ -130,4 +130,5 @@ export interface modifyFileProps {
 export interface copyProps {
     source: string;
     target: string;
+    gzip?: boolean;
 }

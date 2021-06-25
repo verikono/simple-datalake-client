@@ -9,7 +9,7 @@ import {
     DataLakeDirectoryClient
 } from '@azure/storage-file-datalake';
 
-
+import * as zlib from 'zlib';
 
 import * as fs from 'fs';
 import * as path from 'path';
@@ -170,6 +170,8 @@ export class AzureDatalakeClient {
     /**
      * Copy the contents at a URL to another URL
      * 
+     * If the target is a .gz file and the source is not, the method will gzip compress it.
+     * 
      * @param props
      * @param props.source the URL of the source file or directory (copying from source to target)
      * @param props.target the URL of the target file or directory (copying from source to target)
@@ -230,6 +232,8 @@ export class AzureDatalakeClient {
             }
             else { //assumed to be a file.
                 
+                const gzipTarget = source.substr(-3) !== '.gz' && target.substr(-3) === '.gz'
+
                 const sourceClient = this.getFileClient({url: source});
                 const targetClient = this.getFileClient({url: target});
 
@@ -248,7 +252,16 @@ export class AzureDatalakeClient {
 
                         try {
 
-                            const totalBuffer = Buffer.concat(chunks);
+                            let totalBuffer = Buffer.concat(chunks);
+                            if(gzipTarget) {
+                                totalBuffer = await new Promise((resolve, reject) => {
+                                    zlib.gzip(totalBuffer, (err, result) => {
+                                        if(err)
+                                            return reject(err);
+                                        resolve(result);
+                                    });
+                                });
+                            }
                             await targetClient.upload(totalBuffer);
                             resolve(true);
                         }
