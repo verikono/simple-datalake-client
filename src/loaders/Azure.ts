@@ -13,16 +13,27 @@ import {
 
 import * as zlib from 'zlib';
 
+/**
+ * Load data to a stream from the Azure Datalake Gen2
+ * 
+ * @param options the keyword argument object
+ * @param options.url String the Datalake URL 
+ * @param options.report Object an empty object which this loader will write output meta to.
+ * @returns 
+ */
 export async function fromAzureDatalake( options ) {
 
     const {
         url
     } = options;
 
+    const reporter = options.reporter || {};
+
     const client = new DataLakeFileClient(url, new DefaultAzureCredential());
     const downloadResponse = await client.read();
     let stream = downloadResponse.readableStreamBody;
     const zipped = url.substr(-2) === 'gz';
+    reporter.sourceIsGzipped = true;
     if(zipped)
         stream = stream.pipe(zlib.createGunzip())
     return stream;

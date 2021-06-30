@@ -17,13 +17,18 @@ import {
 import {
     CSVStreamToKeywordObjects,
     applyMutations,
-    keywordArrayToCSV
+    keywordArrayToCSV,
+    eachRow
 } from './transforms';
 
 import {
     fromAzureDatalake,
     toAzureDatalake
 } from './loaders';
+
+import {
+    nullTerminator
+} from './terminators';
 
 export class AzureDatalakeExt {
 
@@ -155,83 +160,49 @@ export class AzureDatalakeExt {
         return new Promise( async (resolve, reject) => {
 
             try {
+
                 const { url } = props;
-                const zipped = url.substr(-2) === 'gz';
                 let {
                     mapper,
                     persist
                 } = props;
-                let {
-                    delimiter
-                } = parserOptions;
-                
-                let i=0,
-                    promises=[],
-                    keys;
 
-                parserOptions['key_values'] = parserOptions['key_values'] === undefined
-                    ? true : parserOptions['key_values'];
+                const parserOptions = props['parserOptions'] || {};
+                parserOptions.header = parserOptions.hasOwnProperty('key_values')
+                    ? parserOptions.key_values
+                    : true;
 
-                delimiter = delimiter || ',';
+                const promises = [];
 
-                let stream;
-                try {
-                    stream = await this.client.readableStream({url});
-                    if(zipped)
-                        stream = stream.pipe(zlib.createGunzip())
-                }
-                catch( err ){
-                    return reject(err);
-                }
+                const zipped = url.substr(-2) === 'gz';
 
                 try {
 
                     pipeline(
-                        stream,
-                        parse(parserOptions)
-                            .on('data', data => {
-
-                                try {
-                                    if(parserOptions['key_values']) {
-                                        if(i === 0 && !keys) {
-                                            keys = data;
-                                            return;    
-                                        }
-            
-                                        const keyed_data = keys.reduce((acc, key, i) => {
-                                            acc[key] = data[i];
-                                            return acc;
-                                        }, {})
-            
-                                        promises.push(mapper(keyed_data, i));
-                                        i++;
-                                    }
-                                    else {
-
-                                        promises.push(mapper(data, i));
-                                        i++;
-                                    }
-                                }
-                                catch( err ) {
-                                    throw new Error(`Mapper produced an error for data ${JSON.stringify(data)} - ${err.message}`);
-                                }
-                            })
-                            .on('error', err => {
-                                return reject(err)
-                            })
-                            .on('end', async () => {
-
+                        await fromAzureDatalake({url}),
+                        eachRow({
+                            parserOptions,
+                            onRow: (data, i) => {
+                                const result = mapper(data,i);
+                                promises.push(result);
+                            },
+                            onError: reject,
+                            onEnd: async meta => {
+                                
                                 //await all promises in the mapped stack
                                 const result = await Promise.all(promises);
+                                const { delimiter } = meta;
 
                                 //if we're saving the result back to the datalake overwriting what WAS there.
                                 if(persist) {
 
                                     //CSVify the result
-                                    let headings, rows, content;
+                                    let headings,
+                                        rows,
+                                        content;
 
                                     //if we mapped over key/value objects, CSVify based of an array of keyvalue objects.
-                                    if(parserOptions['key_values']) {
+                                    if(parserOptions['header']) {
 
                                         try {
                                             headings = Object.keys(result[0]).join(delimiter);
@@ -247,7 +218,7 @@ export class AzureDatalakeExt {
 
                                         content = result.map(data => data.join(delimiter)).join(EOL);
                                     }
-                                    
+                                
                                     //push the CSV back up to the datalake
                                     try {
 
@@ -266,9 +237,14 @@ export class AzureDatalakeExt {
                                 }
 
                                 resolve(result);
-                            })
-                        ,
-                        err => reject
+                                
+                            }
+                        }),
+                        nullTerminator(),
+                        err => {
+                            if(err)
+                                reject(err) 
+                        }
                     );
                 }
                 catch( err ) {
@@ -585,6 +561,9 @@ export class AzureDatalakeExt {
                     credential
                 )
 
+                if(!(await this.client.exists({url})))
+                    throw new Error(`no file exists at ${url}`);
+
                 try {
 
                     await serviceClient.createTable(table);
@@ -640,7 +619,7 @@ export class AzureDatalakeExt {
                                 numRowsInserted++;
                             } catch( err ) {
                                 await serviceClient.deleteTable(table);
-                                return reject(Error(`Purged table ${table} - data extraction failed - ${err.message}`));
+                                return reject(Error(`Purged table ${table} - data extraction failed - an error has occured in the mapper function provided to SimpleDatalakeClient::ext.cache - ${err.message}`));
                             }
                         }
                     }, parserOptions);
@@ -743,8 +722,16 @@ export class AzureDatalakeExt {
                                         //first row of 2nd+ file - assumed to be the column namesdat
                                         else if(rowNum === 0 && fileItr !== 0) {
                                             //ensure the keys are the same for each file, ensure this new file has the same columns
-                                            if(data.length !== columnNames.length || !data.every(col => columnNames.includes(col)))
+                                            if(data.length !== columnNames.length || !data.every(col => columnNames.includes(col))) {
+                                                data.forEach(dataColumn => {
+                                                    const isNewColumn = !columnNames.includes(dataColumn)
+
+                                                })
+
+                                                console.log('---');
                                                 return reject(new Error(`Compile can only work for files with the same columns`));
+                                            }
+                                                
                                             //set up the dleteRows which we'll each one off as we iterate through them, leaving any
                                             //left which the 'end' event is fired to be scheduled for deletion.
                                             deleteRows = result.map(row => row._pk);

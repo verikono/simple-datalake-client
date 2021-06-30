@@ -1,0 +1,1 @@
+export { nullTerminator } from './NullTerminator';

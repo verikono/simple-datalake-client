@@ -69,7 +69,7 @@ describe(`Datalake client tests`, function() {
     const validURL_BIG_ZIPPED = process.env.TEST_VALID_URL_BIG_ZIPPED;
     const validURL_WITH_EMPTY_COLUMNS = process.env.TEST_VALID_URL_WITH_EMPTY_COLUMNS;
     const validURLNotExists = validURL.split('/').slice(0, -1).concat('nofilenoway.csv').join('/')
-    const validReferenceCalenderURL = process.env.TEST_VALID_REFERENCE_CALENDAR_URL;
+    let validReferenceCalenderURL = process.env.TEST_VALID_REFERENCE_CALENDAR_URL;
 
     describe(`Setup`, () => {
 
@@ -186,14 +186,22 @@ describe(`Datalake client tests`, function() {
 
             it(`Correctly identifies a valid directory URL`, async () => {
                 
-                const validDirectoryUrl = 'https://nusatradeadl.blob.core.windows.net/dev/test2';
-                const validFileUrl = 'https://nusatradeadl.blob.core.windows.net/dev/test2/reference_calendar.csv.gz';
-
+                const validDirectoryUrl = "https://nusatradeadl.blob.core.windows.net/simulation-service/scenario-results/SYSTEM/618a2abe-d2da-4bf7-97af-e77111cf4b2c/BAKING/input"
+                //const validDirectoryUrl = 'https://nusatradeadl.blob.core.windows.net/dev/test2';
+               
                 const instance = new AzureDatalakeClient();
                 const directoryIsDirectory = await instance._isURLDirectory(validDirectoryUrl);
-                const filesIsDirectory = await instance._isURLDirectory(validFileUrl);
 
-                assert(directoryIsDirectory === true && filesIsDirectory === false, 'failed');
+                assert(directoryIsDirectory === true, 'failed');
+
+            });
+
+            it(`Correctly identifies a valid file URL`, async () => {
+
+                const validFileUrl = 'https://nusatradeadl.blob.core.windows.net/dev/test2/reference_calendar.csv.gz';
+                const filesIsDirectory = await instance._isURLDirectory(validFileUrl);
+                assert(filesIsDirectory === false, 'failed');
+
 
             });
 
@@ -344,7 +352,7 @@ describe(`Datalake client tests`, function() {
 
         });
 
-        describe.only('copy', () => {
+        describe('copy', () => {
 
             it(`copies a file`, async () => {
 
@@ -490,11 +498,11 @@ describe(`Datalake client tests`, function() {
 
         });
 
-        describe(`map`, () => {
+        describe.only(`map`, () => {
 
             const instance = new AzureDatalakeClient();
 
-            it(`invokes map with a valid URL`, async () => {
+            it(`invokes map with a valid CSV URL `, async () => {
 
                 const cnt = await instance.ext.count({url: validURL});
                 const result = await instance.ext.map({url: validURL, mapper: (data, i) => {
@@ -502,6 +510,18 @@ describe(`Datalake client tests`, function() {
                 }});
 
                 assert(cnt-1 === result.length, 'failed');
+            });
+
+            it(`invokes map with a valid pipe seperated "csv" URL, autodetecting the delimiter`, async () => {
+
+                const { TEST_VALID_PSV_URL } = process.env;
+                const cnt = await instance.ext.count({url: TEST_VALID_PSV_URL });
+                const result = await instance.ext.map({url: TEST_VALID_PSV_URL, mapper: (data, i) => {
+                    return i;
+                }})
+                assert(result.length, 'failed - no results');
+                assert(result.length === cnt, 'failed - result should equal count');
+
             });
 
             it(`gracefully errors when a problem occurs in the reducer`, async () => {
@@ -636,14 +656,17 @@ describe(`Datalake client tests`, function() {
 
             it(`Caches`, async () => {
 
+                validReferenceCalenderURL = 'https://nusatradeadl.blob.core.windows.net/simulation-service/scenario-results/SYSTEM/4768c37a-5ae1-4162-9947-2b57b6832a69/BAKING/input/scope.csv.gz';
+                const table = 'SCOPE4768c37a5ae1416299472b57b6832a69'; //'brentest';
                 const instance = new AzureDatalakeClient();
                 const result = await instance.ext.cache({
                     url: validReferenceCalenderURL,
-                    table: 'brenstest',
+                    table,
                     partitionKey: 'planning_account',
-                    rowKey: row =>  crypto.createHash('md5').update(JSON.stringify(row)).digest("hex"),
+                    rowKey: 'group_name',
+                    //rowKey: row =>  crypto.createHash('md5').update(JSON.stringify(row)).digest("hex"),
                     replaceIfExists:true
-                });
+                }, {delimiter:','});
 
                 const count = await instance.ext.count({url: validReferenceCalenderURL}, {delimiter:'|', headers: true})
                 assert(count === result.numRowsInserted, 'failed');
@@ -909,6 +932,22 @@ describe(`Datalake client tests`, function() {
                 assert(Array.isArray(data), 'data is spuposed to be an array');
                 assert(data.length, 'no rows were returned');
                 assert(Object.keys(diff).length === 0, 'received a populated diff where the diff was expected to be empty');
+            });
+
+            it(`Compiles nulls to new columns, allowing a change to appear in the diff`, async () => {
+
+                const instance = new AzureDatalakeClient();
+                const { data, diff } = await instance.ext.compile({
+                    urls: [
+                        "https://nusatradeadl.blob.core.windows.net/simulation-service/scenario-results/SYSTEM/d77f8a50-ce4d-43d7-a429-1048254a4398/BAKING/output/optimized_simulated.csv.gz",
+                        "https://nusatradeadl.blob.core.windows.net/simulation-service/scenario-results/SYSTEM/d77f8a50-ce4d-43d7-a429-1048254a4398/BAKING/input/reference_calendar.csv.gz"
+                    ],
+                    pk: data => {
+                        return ['planning_account', 'start_date', 'group_name', 'promo_tactic']
+                                .map(key => data[key])
+                                .join('|');
+                    }
+                }, {delimiter:'|'});
             });
 
         });

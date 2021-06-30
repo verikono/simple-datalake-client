@@ -33,13 +33,23 @@ const storage_file_datalake_1 = require("@azure/storage-file-datalake");
 const identity_1 = require("@azure/identity");
 const stream_1 = require("stream");
 const zlib = __importStar(require("zlib"));
+/**
+ * Load data to a stream from the Azure Datalake Gen2
+ *
+ * @param options the keyword argument object
+ * @param options.url String the Datalake URL
+ * @param options.report Object an empty object which this loader will write output meta to.
+ * @returns
+ */
 function fromAzureDatalake(options) {
     return __awaiter(this, void 0, void 0, function* () {
         const { url } = options;
+        const reporter = options.reporter || {};
         const client = new storage_file_datalake_1.DataLakeFileClient(url, new identity_1.DefaultAzureCredential());
         const downloadResponse = yield client.read();
         let stream = downloadResponse.readableStreamBody;
         const zipped = url.substr(-2) === 'gz';
+        reporter.sourceIsGzipped = true;
         if (zipped)
             stream = stream.pipe(zlib.createGunzip());
         return stream;

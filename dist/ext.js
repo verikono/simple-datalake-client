@@ -36,6 +36,7 @@ const os_1 = require("os");
 const data_tables_1 = require("@azure/data-tables");
 const transforms_1 = require("./transforms");
 const loaders_1 = require("./loaders");
+const terminators_1 = require("./terminators");
 class AzureDatalakeExt {
     constructor(props) {
         this.client = null;
@@ -133,88 +134,64 @@ class AzureDatalakeExt {
             return new Promise((resolve, reject) => __awaiter(this, void 0, void 0, function* () {
                 try {
                     const { url } = props;
-                    const zipped = url.substr(-2) === 'gz';
                     let { mapper, persist } = props;
-                    let { delimiter } = parserOptions;
-                    let i = 0, promises = [], keys;
-                    parserOptions['key_values'] = parserOptions['key_values'] === undefined
-                        ? true : parserOptions['key_values'];
-                    delimiter = delimiter || ',';
-                    let stream;
+                    const parserOptions = props['parserOptions'] || {};
+                    parserOptions.header = parserOptions.hasOwnProperty('key_values')
+                        ? parserOptions.key_values
+                        : true;
+                    const promises = [];
+                    const zipped = url.substr(-2) === 'gz';
                     try {
-                        stream = yield this.client.readableStream({ url });
-                        if (zipped)
-                            stream = stream.pipe(zlib.createGunzip());
-                    }
-                    catch (err) {
-                        return reject(err);
-                    }
-                    try {
-                        stream_1.pipeline(stream, parse_1.parse(parserOptions)
-                            .on('data', data => {
-                            try {
-                                if (parserOptions['key_values']) {
-                                    if (i === 0 && !keys) {
-                                        keys = data;
-                                        return;
+                        stream_1.pipeline(yield loaders_1.fromAzureDatalake({ url }), transforms_1.eachRow({
+                            parserOptions,
+                            onRow: (data, i) => {
+                                const result = mapper(data, i);
+                                promises.push(result);
+                            },
+                            onError: reject,
+                            onEnd: (meta) => __awaiter(this, void 0, void 0, function* () {
+                                //await all promises in the mapped stack
+                                const result = yield Promise.all(promises);
+                                const { delimiter } = meta;
+                                //if we're saving the result back to the datalake overwriting what WAS there.
+                                if (persist) {
+                                    //CSVify the result
+                                    let headings, rows, content;
+                                    //if we mapped over key/value objects, CSVify based of an array of keyvalue objects.
+                                    if (parserOptions['header']) {
+                                        try {
+                                            headings = Object.keys(result[0]).join(delimiter);
+                                            rows = result.map(data => Object.values(data).join(delimiter));
+                                            content = [].concat(headings, rows).join(os_1.EOL);
+                                        }
+                                        catch (err) {
+                                            throw Error('Failed to construct the result to CSV.');
+                                        }
                                     }
-                                    const keyed_data = keys.reduce((acc, key, i) => {
-                                        acc[key] = data[i];
-                                        return acc;
-                                    }, {});
-                                    promises.push(mapper(keyed_data, i));
-                                    i++;
-                                }
-                                else {
-                                    promises.push(mapper(data, i));
-                                    i++;
-                                }
-                            }
-                            catch (err) {
-                                throw new Error(`Mapper produced an error for data ${JSON.stringify(data)} - ${err.message}`);
-                            }
-                        })
-                            .on('error', err => {
-                            return reject(err);
-                        })
-                            .on('end', () => __awaiter(this, void 0, void 0, function* () {
-                            //await all promises in the mapped stack
-                            const result = yield Promise.all(promises);
-                            //if we're saving the result back to the datalake overwriting what WAS there.
-                            if (persist) {
-                                //CSVify the result
-                                let headings, rows, content;
-                                //if we mapped over key/value objects, CSVify based of an array of keyvalue objects.
-                                if (parserOptions['key_values']) {
+                                    //if we mapped over raw rows csvify that way.
+                                    else {
+                                        content = result.map(data => data.join(delimiter)).join(os_1.EOL);
+                                    }
+                                    //push the CSV back up to the datalake
                                     try {
-                                        headings = Object.keys(result[0]).join(delimiter);
-                                        rows = result.map(data => Object.values(data).join(delimiter));
-                                        content = [].concat(headings, rows).join(os_1.EOL);
+                                        //if the URL is a zip file, zip up the contents.
+                                        if (zipped)
+                                            throw Error(`Unimplemented - zip up a mapped result`);
+                                        const client = this.client.getFileClient({ url });
+                                        yield client.create();
+                                        yield client.append(content, 0, content.length);
+                                        yield client.flush(content.length);
                                     }
                                     catch (err) {
-                                        throw Error('Failed to construct the result to CSV.');
+                                        throw Error(`Failed uploading result to datalake - ${err.message}`);
                                     }
                                 }
-                                //if we mapped over raw rows csvify that way.
-                                else {
-                                    content = result.map(data => data.join(delimiter)).join(os_1.EOL);
-                                }
-                                //push the CSV back up to the datalake
-                                try {
-                                    //if the URL is a zip file, zip up the contents.
-                                    if (zipped)
-                                        throw Error(`Unimplemented - zip up a mapped result`);
-                                    const client = this.client.getFileClient({ url });
-                                    yield client.create();
-                                    yield client.append(content, 0, content.length);
-                                    yield client.flush(content.length);
-                                }
-                                catch (err) {
-                                    throw Error(`Failed uploading result to datalake - ${err.message}`);
-                                }
-                            }
-                            resolve(result);
-                        })), err => reject);
+                                resolve(result);
+                            })
+                        }), terminators_1.nullTerminator(), err => {
+                            if (err)
+                                reject(err);
+                        });
                     }
                     catch (err) {
                         return reject(err);
@@ -431,6 +408,8 @@ class AzureDatalakeExt {
                 const credential = new data_tables_1.AzureNamedKeyCredential(AZURE_STORAGE_ACCOUNT, AZURE_STORAGE_ACCOUNT_KEY);
                 const serviceClient = new data_tables_1.TableServiceClient(`https://${AZURE_STORAGE_ACCOUNT}.table.core.windows.net`, credential);
                 const transactClient = new data_tables_1.TableClient(`https://${AZURE_STORAGE_ACCOUNT}.table.core.windows.net`, table, credential);
+                if (!(yield this.client.exists({ url })))
+                    throw new Error(`no file exists at ${url}`);
                 try {
                     yield serviceClient.createTable(table);
                 }
@@ -483,7 +462,7 @@ class AzureDatalakeExt {
                             }
                             catch (err) {
                                 yield serviceClient.deleteTable(table);
-                                return reject(Error(`Purged table ${table} - data extraction failed - ${err.message}`));
+                                return reject(Error(`Purged table ${table} - data extraction failed - an error has occured in the mapper function provided to SimpleDatalakeClient::ext.cache - ${err.message}`));
                             }
                         })
                     }, parserOptions);
@@ -554,8 +533,13 @@ class AzureDatalakeExt {
                                 //first row of 2nd+ file - assumed to be the column namesdat
                                 else if (rowNum === 0 && fileItr !== 0) {
                                     //ensure the keys are the same for each file, ensure this new file has the same columns
-                                    if (data.length !== columnNames.length || !data.every(col => columnNames.includes(col)))
+                                    if (data.length !== columnNames.length || !data.every(col => columnNames.includes(col))) {
+                                        data.forEach(dataColumn => {
+                                            const isNewColumn = !columnNames.includes(dataColumn);
+                                        });
+                                        console.log('---');
                                         return reject(new Error(`Compile can only work for files with the same columns`));
+                                    }
                                     //set up the dleteRows which we'll each one off as we iterate through them, leaving any
                                     //left which the 'end' event is fired to be scheduled for deletion.
                                     deleteRows = result.map(row => row._pk);
