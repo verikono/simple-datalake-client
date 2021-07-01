@@ -160,12 +160,70 @@ export class AzureDatalakeClient {
         })
         .catch( err => {
 
-            throw Error(`AzureDatalakeClient::save failed - ${err.message}`);
+            throw new Error(`AzureDatalakeClient::save failed - ${err.message}`);
         })
 
 
     }
 
+    /**
+     * "Delete" the files from the URL. quotes are there because the ADLS places them in to some sort of
+     * recycle bin and these will appear w/ listEntities but... they're as deleted as i can delete them.
+     *  
+     * @param props the keyword argument object
+     * @param props.url the URL being deleted and works for directories and files.
+     */
+    async delete( props:I.deleteProps ):Promise<boolean> {
+
+        try {
+
+            let {
+                url
+            } = props;
+
+
+            url = url.substr(-1) === '/' ? url.substr(0, url.length-1) : url;
+            const parsedUrl = this._parseURL(url);
+
+            const client = await this.getFileClient({url});
+            await client.deleteIfExists(true);
+
+            return true;
+
+        }
+        catch( err ) {
+
+            throw new Error(`AzureDatalakeClient::delete has failed - ${err.message}`);
+        }
+    }
+
+    /**
+     * Similar to UNIX - create an empty file at the argued url, creating all subdirectories.
+     * 
+     * @param props Object the keyword argument object
+     * @param props.url String the url
+     * 
+     * @returns Promise<boolean>
+     */
+    async touch( props:I.touchProps ):Promise<boolean>{
+
+        try {
+
+            const {
+                url
+            } = props;
+
+            const client = this.getFileClient({url});
+            await client.create();
+            await client.upload(Buffer.alloc(0));
+
+            return true;
+        }
+        catch( err ) {
+
+            throw new Error(`AzureDatalakeClient::touch has failed - ${err.message}`)
+        }
+    }
 
     /**
      * Copy the contents at a URL to another URL
@@ -278,7 +336,7 @@ export class AzureDatalakeClient {
         }
         catch( err ) {
 
-            throw Error(`AzureDatalakeClient::copy failed - ${err.message}`);
+            throw new Error(`AzureDatalakeClient::copy failed - ${err.message}`);
         }
     }
 

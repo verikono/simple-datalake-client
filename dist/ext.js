@@ -27,6 +27,13 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
         step((generator = generator.apply(thisArg, _arguments || [])).next());
     });
 };
+var __asyncValues = (this && this.__asyncValues) || function (o) {
+    if (!Symbol.asyncIterator) throw new TypeError("Symbol.asyncIterator is not defined.");
+    var m = o[Symbol.asyncIterator], i;
+    return m ? m.call(o) : (o = typeof __values === "function" ? __values(o) : o[Symbol.iterator](), i = {}, verb("next"), verb("throw"), verb("return"), i[Symbol.asyncIterator] = function () { return this; }, i);
+    function verb(n) { i[n] = o[n] && function (v) { return new Promise(function (resolve, reject) { v = o[n](v), settle(resolve, reject, v.done, v.value); }); }; }
+    function settle(resolve, reject, d, v) { Promise.resolve(v).then(function(v) { resolve({ value: v, done: d }); }, reject); }
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AzureDatalakeExt = void 0;
 const parse_1 = require("@fast-csv/parse");
@@ -150,8 +157,15 @@ class AzureDatalakeExt {
                             },
                             onError: reject,
                             onEnd: (meta) => __awaiter(this, void 0, void 0, function* () {
-                                //await all promises in the mapped stack
-                                const result = yield Promise.all(promises);
+                                let result;
+                                try {
+                                    //await all promises in the mapped stack
+                                    result = yield Promise.all(promises);
+                                }
+                                catch (err) {
+                                    if (!err.message.includes(`Cannot read property 'ERROR' of undefined`))
+                                        throw err;
+                                }
                                 const { delimiter } = meta;
                                 //if we're saving the result back to the datalake overwriting what WAS there.
                                 if (persist) {
@@ -214,53 +228,47 @@ class AzureDatalakeExt {
      */
     forEach(props, parserOptions = {}) {
         return new Promise((resolve, reject) => __awaiter(this, void 0, void 0, function* () {
-            const { url, fn } = props;
-            let { block } = props, i = 0, promises = [], keys;
-            parserOptions['key_values'] = parserOptions['key_values'] === undefined
-                ? true : parserOptions['key_values'];
-            block = block === undefined ? true : block;
-            const finalize = () => resolve();
-            let stream;
             try {
-                stream = yield this.client.readableStream({ url });
-                if (url.substr(-2) === 'gz')
-                    stream = stream.pipe(zlib.createGunzip());
-            }
-            catch (err) {
-                return reject(err);
-            }
-            try {
-                stream_1.pipeline(stream, parse_1.parse(parserOptions)
-                    .on('data', data => {
-                    if (parserOptions['key_values']) {
-                        if (i === 0 && !keys) {
-                            keys = data;
-                            return;
+                const { url, fn } = props;
+                let { block } = props;
+                parserOptions['header'] = parserOptions['header'] === undefined ? true : parserOptions['header'];
+                block = block === undefined ? true : block;
+                if (parserOptions['key_values'] !== undefined) {
+                    console.warn('SimpleDatalakeClient::ext.forEach is depreacting the key_values option - use option header instead');
+                    parserOptions['header'] = parserOptions['key_values'];
+                    delete parserOptions['key_values'];
+                }
+                let promises = [];
+                stream_1.pipeline(yield loaders_1.fromAzureDatalake({ url }), transforms_1.eachRow({
+                    parserOptions,
+                    onRow: (data, i) => {
+                        const result = fn(data, i);
+                        promises.push(result);
+                    },
+                    onError: reject,
+                    onEnd: (meta) => __awaiter(this, void 0, void 0, function* () {
+                        if (block) {
+                            try {
+                                yield Promise.all(promises);
+                            }
+                            catch (err) {
+                                if (!err.message.includes(`Cannot read property 'ERROR' of undefined`))
+                                    throw err;
+                            }
+                            resolve();
                         }
-                        const keyed_data = keys.reduce((acc, key, i) => {
-                            acc[key] = data[i];
-                            return acc;
-                        }, {});
-                        promises.push(fn(keyed_data, i));
-                    }
-                    else {
-                        promises.push(fn(data, i));
-                        i++;
-                    }
-                })
-                    .on('error', reject)
-                    .on('end', () => __awaiter(this, void 0, void 0, function* () {
-                    if (block) {
-                        yield Promise.all(promises);
-                        finalize();
-                    }
-                })), err => reject);
+                        else {
+                            resolve();
+                        }
+                    })
+                }), terminators_1.nullTerminator(), err => {
+                    if (err)
+                        reject(err);
+                });
             }
             catch (err) {
-                return reject(err);
+                reject(Error(`SimpleDatalakeClient::ext.forEach has failed ${err.message}`));
             }
-            if (!block)
-                finalize();
         }));
     }
     /**
@@ -341,23 +349,22 @@ class AzureDatalakeExt {
      * Remember, this will count the headers unless the parserOptions has headers set to false.
      *
      * @param props
+     * @param props.includeHeadings boolean, include the headings column in the count, default false.
      * @param parserOptions @see https://c2fo.github.io/fast-csv/docs/parsing/options/
+     *
      */
     count(props, parserOptions = {}) {
         return __awaiter(this, void 0, void 0, function* () {
             return new Promise((resolve, reject) => __awaiter(this, void 0, void 0, function* () {
                 try {
-                    const { url } = props;
-                    let stream, i = 0, headersIgnored = false;
-                    stream = yield this.client.readableStream({ url });
-                    if (url.substr(-2) === 'gz')
-                        stream = stream.pipe(zlib.createGunzip());
-                    stream_1.pipeline(stream, parse_1.parse(parserOptions)
+                    const { url, includeHeadings } = props;
+                    let i = 0, processedHeadings = false;
+                    stream_1.pipeline(yield loaders_1.fromAzureDatalake({ url }), parse_1.parse(parserOptions)
                         .on('data', data => {
-                        // if(parserOptions.headers && !headersIgnored) {
-                        //     headersIgnored = true;
-                        //     return;
-                        // }
+                        if (i === 0 && !includeHeadings && !processedHeadings) {
+                            processedHeadings = true;
+                            return;
+                        }
                         i++;
                     })
                         .on('error', err => {
@@ -407,11 +414,12 @@ class AzureDatalakeExt {
                     throw Error(`simple_datalake_client::cache failed - missing environment variable STORAGE_ACCOUNT_KEY`);
                 const credential = new data_tables_1.AzureNamedKeyCredential(AZURE_STORAGE_ACCOUNT, AZURE_STORAGE_ACCOUNT_KEY);
                 const serviceClient = new data_tables_1.TableServiceClient(`https://${AZURE_STORAGE_ACCOUNT}.table.core.windows.net`, credential);
-                const transactClient = new data_tables_1.TableClient(`https://${AZURE_STORAGE_ACCOUNT}.table.core.windows.net`, table, credential);
+                const tableClient = new data_tables_1.TableClient(`https://${AZURE_STORAGE_ACCOUNT}.table.core.windows.net`, table, credential);
                 if (!(yield this.client.exists({ url })))
                     throw new Error(`no file exists at ${url}`);
                 try {
                     yield serviceClient.createTable(table);
+                    yield emptyTable(tableClient, table);
                 }
                 catch (err) {
                     if (err.message.includes('TableBeingDeleted')) {
@@ -442,23 +450,28 @@ class AzureDatalakeExt {
                         return reject(Error(`SimpleDatalakeClient:ext::cache failed to build target table ${table} using credentials [${AZURE_STORAGE_ACCOUNT}][${AZURE_STORAGE_ACCOUNT_KEY}] ${err.message}`));
                     }
                 }
-                let numRowsInserted = 0;
+                let numRowsProcessed = 0;
+                let transactions = [];
                 try {
-                    yield this.map({
+                    yield this.forEach({
                         url,
-                        mapper: (row, i) => __awaiter(this, void 0, void 0, function* () {
+                        fn: (row, i) => __awaiter(this, void 0, void 0, function* () {
                             let result;
                             try {
-                                row.PartitionKey = typeof partitionKey === 'function'
+                                row.partitionKey = typeof partitionKey === 'function'
                                     ? partitionKey(row)
                                     : row[partitionKey];
-                                row.RowKey = typeof rowKey === 'function'
+                                row.rowKey = typeof rowKey === 'function'
                                     ? rowKey(row)
                                     : row[rowKey];
                                 if (types && Object.keys(types).length)
                                     row = _castKeywordObject(row, types);
-                                result = yield transactClient.createEntity(row);
-                                numRowsInserted++;
+                                if (row.partitionKey && row.rowKey)
+                                    transactions.push(['create', row]);
+                                else {
+                                    console.log('---');
+                                }
+                                numRowsProcessed++;
                             }
                             catch (err) {
                                 yield serviceClient.deleteTable(table);
@@ -470,8 +483,10 @@ class AzureDatalakeExt {
                 catch (err) {
                     reject(err);
                 }
+                const partitionedActions = partitionActionsStack(transactions);
+                yield submitPartitionedActions(partitionedActions, tableClient);
                 return resolve({
-                    numRowsInserted
+                    numRowsInserted: transactions.length
                 });
             }
             catch (err) {
@@ -779,5 +794,140 @@ function _castKeywordObject(obj, definitions) {
         }
         return acc;
     }, {});
+}
+/**
+ * Convert a list of transaction actions to a binned structure useful for TableClient.submitTransaction. Each bin
+ * will be sorted into the transaction type (eg create, update etc) then the partitionKey as each action submitTransaction
+ * accepts must be the same type and of the same partition.
+ *
+ * @param actions Array of Transaction Actions - eg ['create', {partitionkey:'a', rowKey:'a', data:1}]
+ * @param options Object a keyword options object
+ *
+ * @returns Object binned structure of { <transactionType> : { <partitionKey> : [ action, .. ] } }
+ */
+function partitionActionsStack(actions) {
+    try {
+        return actions.reduce((acc, txn) => {
+            const [action, data] = txn;
+            const { partitionKey, rowKey } = data;
+            if (!partitionKey || !rowKey)
+                throw new Error(`invalid row - missing partition or row key`);
+            acc[action] = acc[action] || {};
+            acc[action][partitionKey] = acc[action][partitionKey] || [];
+            acc[action][partitionKey].push(txn);
+            return acc;
+        }, {});
+    }
+    catch (err) {
+        throw new Error(`partitionActionsStack has failed - ${err.message}`);
+    }
+}
+/**
+ * Submit a set of actions which are binned appropriately (@see partitionActionsStack output) - that is;
+ * { <transactionType> : { <partitionKey> : [ action, .. ] } }
+ *
+ * @param partitionedActions
+ * @param tableClient
+ *
+ * @returns boolean if all transactions were successfull
+ * @throws Error
+ */
+function submitPartitionedActions(partitionedActions, tableClient) {
+    return __awaiter(this, void 0, void 0, function* () {
+        try {
+            const txns = [];
+            Object.keys(partitionedActions).forEach(action => {
+                Object.keys(partitionedActions[action]).forEach(partition => {
+                    if (partitionedActions[action][partition].length)
+                        txns.push(partitionedActions[action][partition]);
+                });
+            });
+            try {
+                //txns.every(ktxn => allTxnsAreUnique(ktxn))
+                for (var i = 0; i < txns.length; i++) {
+                    const actions = txns[i];
+                    yield tableClient.submitTransaction(actions);
+                    setTimeout(() => { }, 100);
+                }
+                // when microsoft fix their stuff - use below:
+                // await Promise.all(txns.map(actions => tableClient.submitTransaction(actions)}));
+            }
+            catch (err) {
+                throw new Error(`failed completing transactions - ${err.message}`);
+            }
+            return true;
+        }
+        catch (err) {
+            throw new Error(`submitPartitionedActions has failed - ${err.message}`);
+        }
+    });
+}
+/**
+ * Ensures all the transactions are unique.
+ *
+ * @param txns
+ *
+ * @returns boolean
+ * @throws Error - w/ a list of non-unique partitionKey/RowKey combinations
+ */
+function allTxnsAreUnique(txns) {
+    const keys = [];
+    const conflictedKeys = [];
+    const unique = txns.forEach(txn => {
+        const pk = [txn[1].partitionKey, txn[1].rowKey].join('|');
+        const found = keys.includes(pk);
+        if (found) {
+            conflictedKeys.push(pk);
+        }
+        keys.push(pk);
+    });
+    if (conflictedKeys.length)
+        throw new Error(`cannot perform transactions - attempting to create some entities twice (partitionKey|rowKey) ${conflictedKeys.join('\n')}`);
+    return true;
+}
+function emptyTable(client, table) {
+    var e_1, _a;
+    return __awaiter(this, void 0, void 0, function* () {
+        const result = yield client.listEntities();
+        let spool = {};
+        try {
+            for (var _b = __asyncValues(yield client.listEntities()), _c; _c = yield _b.next(), !_c.done;) {
+                const entity = _c.value;
+                if (!spool.hasOwnProperty(entity.partitionKey)) {
+                    spool[entity.partitionKey] = { currentBinIdx: 0, bins: [[]] };
+                }
+                let currentBinIdx = spool[entity.partitionKey].currentBinIdx;
+                if (spool[entity.partitionKey].bins[currentBinIdx].length > 99) {
+                    spool[entity.partitionKey].currentBinIdx++;
+                    currentBinIdx = spool[entity.partitionKey].currentBinIdx;
+                    spool[entity.partitionKey].bins.push([]);
+                }
+                spool[entity.partitionKey].bins[currentBinIdx].push(entity);
+            }
+        }
+        catch (e_1_1) { e_1 = { error: e_1_1 }; }
+        finally {
+            try {
+                if (_c && !_c.done && (_a = _b.return)) yield _a.call(_b);
+            }
+            finally { if (e_1) throw e_1.error; }
+        }
+        if (!Object.keys(spool).length)
+            return true;
+        const batchStack = Object.keys(spool).reduce((acc, pk) => {
+            const batches = spool[pk].bins.map(bin => {
+                const actions = [];
+                bin.forEach(entity => actions.push(['delete', entity]));
+                return actions;
+            });
+            acc = acc.concat(batches);
+            return acc;
+        }, []);
+        yield Promise.all(batchStack);
+        for (let i = 0; i < batchStack.length; i++) {
+            yield client.submitTransaction(batchStack[i]);
+        }
+        return true;
+    });
 }
 //# sourceMappingURL=ext.js.map

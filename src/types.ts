@@ -87,6 +87,14 @@ export interface saveProps {
     file: string;
 }
 
+export interface deleteProps {
+    url: string;
+}
+
+export interface touchProps {
+    url: string;
+}
+
 export interface putProps {
     url: string;
     content: string;

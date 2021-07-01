@@ -69,6 +69,7 @@ describe(`Datalake client tests`, function() {
     const validURL_BIG_ZIPPED = process.env.TEST_VALID_URL_BIG_ZIPPED;
     const validURL_WITH_EMPTY_COLUMNS = process.env.TEST_VALID_URL_WITH_EMPTY_COLUMNS;
     const validURL_DIRECTORY = process.env.TEST_VALID_DIRECTORY_URL;
+    const touchTestUrl = process.env.TEST_TOUCH_URL;
 
     const validURLNotExists = validURL.split('/').slice(0, -1).concat('nofilenoway.csv').join('/')
     let validReferenceCalenderURL = process.env.TEST_VALID_REFERENCE_CALENDAR_URL;
@@ -90,7 +91,6 @@ describe(`Datalake client tests`, function() {
             it(`Has validURL_ZIPPED`, () => Boolean(validURL_ZIPPED));
             it(`Has validURL_BIG_ZIPPED`, () => Boolean(validURL_BIG_ZIPPED));
             it(`Has validURL_DIRECTORY`, () => Boolean(validURL_DIRECTORY));
-
         })
 
     });
@@ -285,14 +285,72 @@ describe(`Datalake client tests`, function() {
 
         describe(`get`, () => {
 
-            const instance = new AzureDatalakeClient();
-
             it(`Invokes get upon a valid URL`, async () => {
+
+                const instance = new AzureDatalakeClient();
                 const result = await instance.get({url: validURL});
                 assert(typeof result === 'string' && result.length > 1, 'failed');
             });
         });
 
+
+        describe(`touch && delete (both because we create and delete, and test for both here.)`, () => {
+
+            it(`touches a file to the base of the container`, async () => {
+
+                const {
+                    TEST_TOUCH_URL
+                } = process.env;
+
+                assert(Boolean(TEST_TOUCH_URL), 'cannot test - please set TEST_TOUCH_URL in your environment to be a datalake URL where no file exists');
+                const instance = new AzureDatalakeClient();
+                const result = await instance.touch({url: TEST_TOUCH_URL});
+                assert(result === true, 'failed - expected a true to return');
+                assert(await instance.exists({url: TEST_TOUCH_URL}), `failed - file does not exist at ${TEST_TOUCH_URL}`);
+                try {
+                    await instance.delete({url: TEST_TOUCH_URL});
+                    assert(!(await instance.exists({url: TEST_TOUCH_URL})), `test cleanup failed - file still exists , please delete ${TEST_TOUCH_URL}`);
+                }
+                catch( err ) {
+                    throw new Error(`test cleanup failed - manually delete ${TEST_TOUCH_URL} pleaseum - ${err.message}`);
+                }
+            });
+
+            it(`touches a file with some precursive directory structure`, async () => {
+
+                const {
+                    TEST_TOUCH_DIR_URL,
+                    TEST_TOUCH_BASEDIR_URL
+                } = process.env;
+
+                //example of process envs
+                //TEST_TOUCH_DIR_URL : https://myaccount.blob.mic.net/container/testdirectory/touchtestdir1/touchtest2/file.txt
+                //TEST_TOUCH_BASEDIR_URL : https//myaccount.blob.mic.net/container/testdirectory/touchtestdir
+                //the BASEDIR is used to delete the directory structure during cleanup.
+
+                assert(Boolean(TEST_TOUCH_DIR_URL), 'cannot test - please set TEST_TOUCH_DIR_URL in your environment to be a datalake URL where no file exists and has some precursive directory structure');
+                assert(Boolean(TEST_TOUCH_BASEDIR_URL), 'cannot test - please set TEST_TOUCH_BASEDIR_URL in your environment to be a datalake URL where no file exists and has some precursive directory structure');
+                
+                const instance = new AzureDatalakeClient();
+                const result = await instance.touch({url: TEST_TOUCH_DIR_URL});
+                assert(result === true, 'failed - expected a true to return');
+                assert(await instance.exists({url: TEST_TOUCH_DIR_URL}), `failed - file does not exist at ${TEST_TOUCH_DIR_URL}`);
+                try {
+                    await instance.delete({url: TEST_TOUCH_BASEDIR_URL});
+                    assert(!(await instance.exists({url: TEST_TOUCH_DIR_URL})), `test cleanup failed - file still exists , please delete ${TEST_TOUCH_DIR_URL}`);
+                    assert(!(await instance.exists({url: TEST_TOUCH_BASEDIR_URL})), `test cleanup failed - base dir still exists , please delete ${TEST_TOUCH_DIR_URL}`);
+ 
+                }
+                catch( err ) {
+                    throw new Error(`test cleanup failed - manually delete ${TEST_TOUCH_DIR_URL} pleaseum - ${err.message}`);
+                }
+            });
+
+        });
+
+        describe(`delete`, () => {
+
+        });
 
         describe.skip(`stream`, () => {
 
@@ -651,7 +709,7 @@ describe(`Datalake client tests`, function() {
 
         describe(`cache`, () => {
 
-            it.only(`Caches`, async () => {
+            it(`Caches`, async () => {
 
                 const table = 'brentest';
                 const url = validReferenceCalenderURL;

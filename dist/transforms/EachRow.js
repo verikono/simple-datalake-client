@@ -25,17 +25,35 @@ const Papa = __importStar(require("papaparse"));
 class TxEachRow extends stream_1.Transform {
     constructor(options) {
         super();
+        this.processedFirstRow = false;
         this.rowNum = 0;
         this.promises = [];
         this.meta = null;
+        this.delimiterCount = 0;
         this.options = options;
         if (!this.options.parserOptions)
             this.options.parserOptions = {};
     }
     _transform(chunk, encoding, callback) {
         try {
-            const { data, errors, meta } = Papa.parse(chunk.toString(), this.options.parserOptions);
-            this.meta = meta;
+            const lines = chunk.toString().split(/\r?\n/);
+            if (!this.processedFirstRow) {
+                this.headings = lines[0];
+                const parse = Papa.parse(this.headings);
+                this.meta = parse.meta;
+                this.delimiter = parse.meta.delimiter;
+                this.linebreak = parse.meta.linebreak;
+                this.delimiterCount = parse.data[0].length;
+                this.processedFirstRow = true;
+            }
+            else {
+                lines[0] = this.lastPartial + lines[0];
+                lines.unshift(this.headings);
+            }
+            const endline = lines[lines.length - 1];
+            const endIsPartial = !(endline.split(this.delimiter).length === this.delimiterCount && endline.substr(-2) === "\n");
+            this.lastPartial = endIsPartial ? lines.pop() : '';
+            const { data } = Papa.parse(lines.join(this.linebreak), { header: true });
             if (this.options.onRow) {
                 data.forEach(data => {
                     const result = this.options.onRow(data, this.rowNum);
