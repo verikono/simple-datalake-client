@@ -11,9 +11,15 @@ interface EachRowProps {
 export class TxEachRow extends Transform {
 
     options:EachRowProps;
+    processedFirstRow = false;
     rowNum = 0;
     promises = [];
     meta=null;
+    delimiter;
+    linebreak;
+    delimiterCount=0;
+    headings;
+    lastPartial;
 
     constructor( options:EachRowProps ) {
 
@@ -29,13 +35,28 @@ export class TxEachRow extends Transform {
 
         try {
 
-            const {
-                data,
-                errors,
-                meta
-            } = Papa.parse(chunk.toString(), this.options.parserOptions);
+            const lines = chunk.toString().split(/\r?\n/);
 
-            this.meta = meta;
+           
+            if(!this.processedFirstRow) {
+                this.headings = lines[0];
+                const parse = Papa.parse(this.headings);
+                this.meta = parse.meta;
+                this.delimiter = parse.meta.delimiter;
+                this.linebreak = parse.meta.linebreak;
+                this.delimiterCount = parse.data[0].length;
+                this.processedFirstRow = true;
+            }
+            else {
+                lines[0] = this.lastPartial+lines[0];
+                lines.unshift(this.headings)
+            }
+
+            const endline = lines[lines.length-1];
+            const endIsPartial = !(endline.split(this.delimiter).length === this.delimiterCount && endline.substr(-2) === "\n");
+            this.lastPartial = endIsPartial ? lines.pop() : '';
+
+            const {data} = Papa.parse(lines.join(this.linebreak), {header:true});
 
             if(this.options.onRow) {
                 data.forEach(data => {

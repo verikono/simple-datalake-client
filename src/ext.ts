@@ -5,8 +5,9 @@ import { pipeline } from 'stream';
 import * as zlib from 'zlib';
 import { EOL } from 'os';
 
-import { Transform } from 'stream';
-import * as Papa from 'papaparse';
+import {
+    AzureDataTablesClient
+} from 'verikono-azure-datatable-tools';
 
 import {
     TableServiceClient,
@@ -55,9 +56,11 @@ export class AzureDatalakeExt {
         return this.mapSlices({ url, mapper: data => data}, parserOptions)
     }
 
+
     async find():Promise<any> {
 
     }
+
 
     /**
      * Perform a reduce operation upon a stored CSV file in the datalake, optionally storing and overwriting the result.
@@ -188,9 +191,16 @@ export class AzureDatalakeExt {
                             },
                             onError: reject,
                             onEnd: async meta => {
-                                
+                             
+                                let result;
+                                try {
                                 //await all promises in the mapped stack
-                                const result = await Promise.all(promises);
+                                    result = await Promise.all(promises);
+                                }
+                                catch( err ) {
+                                    if(!err.message.includes(`Cannot read property 'ERROR' of undefined`))
+                                        throw err;
+                                }
                                 const { delimiter } = meta;
 
                                 //if we're saving the result back to the datalake overwriting what WAS there.
@@ -270,78 +280,67 @@ export class AzureDatalakeExt {
     forEach( props, parserOptions={} ):Promise<void> {
 
         return new Promise( async (resolve, reject) => {
-
-            const {
-                url,
-                fn
-            } = props;
-
-            let { block } = props,
-                i=0,
-                promises=[],
-                keys;
-
-            parserOptions['key_values'] = parserOptions['key_values'] === undefined
-                ? true : parserOptions['key_values'];
-
-            block = block === undefined ? true : block;
-
-            const finalize = () => resolve();
-
-            let stream;
+        
             try {
-                stream = await this.client.readableStream({url});
-                if(url.substr(-2) === 'gz')
-                    stream = stream.pipe(zlib.createGunzip())
-            } catch( err ){
-                return reject(err);
-            }
 
-            try {
-            
+                const {
+                    url,
+                    fn
+                } = props;
+
+                let {
+                    block
+                } = props;
+
+                parserOptions['header'] = parserOptions['header'] === undefined ? true : parserOptions['header'];
+                block = block === undefined ? true : block;
+
+                if(parserOptions['key_values'] !== undefined) {
+                    console.warn('SimpleDatalakeClient::ext.forEach is depreacting the key_values option - use option header instead')
+                    parserOptions['header'] = parserOptions['key_values'];
+                    delete parserOptions['key_values'];
+                }
+
+                let promises = [];
+
                 pipeline(
-                    stream,
-                    parse(parserOptions)
-                        .on('data', data => {
+                    await fromAzureDatalake({url}),
+                    eachRow({
+                        parserOptions,
+                        onRow: (data, i) => {
+                            const result = fn(data,i);
+                            promises.push(result);
+                        },
+                        onError: reject,
+                        onEnd: async meta => {
 
-                            if(parserOptions['key_values']) {
-                                if(i === 0 && !keys) {
-                                    keys = data;
-                                    return;    
-                                }
-    
-                                const keyed_data = keys.reduce((acc, key, i) => {
-                                    acc[key] = data[i];
-                                    return acc;
-                                }, {})
-    
-                                promises.push(fn(keyed_data, i));
-    
-                            }
-                            else {
-
-                                promises.push(fn(data, i));
-                                i++;
-                            }
-                        })
-                        .on('error', reject)
-                        .on('end', async () => {
                             if(block) {
-                                await Promise.all(promises);
-                                finalize();
+                                
+                                try {
+                                    await Promise.all(promises);
+                                }
+                                catch( err ) {
+                                    if(!err.message.includes(`Cannot read property 'ERROR' of undefined`))
+                                        throw err;
+                                }
+                                resolve();
+                            } else {
+                                resolve();
                             }
-                        })
-                    ,
-                    err => reject
-                )                
+                        }
+
+                    }),
+                    nullTerminator(),
+                    err => {
+                        if(err)
+                            reject(err) 
+                    }
+                )
             }
             catch( err ) {
-                return reject(err);
+
+                reject(Error(`SimpleDatalakeClient::ext.forEach has failed ${err.message}`));
             }
-            
-            if(!block)
-                finalize();
-                
         });
     }
 
@@ -451,7 +450,9 @@ export class AzureDatalakeExt {
      * Remember, this will count the headers unless the parserOptions has headers set to false.
      * 
      * @param props
+     * @param props.includeHeadings boolean, include the headings column in the count, default false.
      * @param parserOptions @see https://c2fo.github.io/fast-csv/docs/parsing/options/
+     * 
      */
     async count( props, parserOptions:any={} ):Promise<number> {
 
@@ -460,26 +461,22 @@ export class AzureDatalakeExt {
             try {
 
                 const {
-                    url
+                    url,
+                    includeHeadings
                 } = props;
 
-                let stream,
-                    i=0,
-                    headersIgnored=false;
-
-                stream = await this.client.readableStream({url});
-                if(url.substr(-2) === 'gz')
-                    stream = stream.pipe(zlib.createGunzip())           
+                let i = 0,
+                    processedHeadings = false;
 
                 pipeline(
-                    stream,
+                    await fromAzureDatalake({url}),
                     parse(parserOptions)
                         .on('data', data => {
-                            // if(parserOptions.headers && !headersIgnored) {
-                            //     headersIgnored = true;
-                            //     return;
-                            // }
-                            i++
+                            if( i===0 && !includeHeadings && !processedHeadings) {
+                                processedHeadings = true;
+                                return;
+                            }
+                            i++;
                         })
                         .on('error', err => {
                             reject(err)
@@ -555,7 +552,7 @@ export class AzureDatalakeExt {
 
                 const credential = new AzureNamedKeyCredential(AZURE_STORAGE_ACCOUNT, AZURE_STORAGE_ACCOUNT_KEY);
                 const serviceClient = new TableServiceClient(`https://${AZURE_STORAGE_ACCOUNT}.table.core.windows.net`, credential);
-                const transactClient = new TableClient(
+                const tableClient = new TableClient(
                     `https://${AZURE_STORAGE_ACCOUNT}.table.core.windows.net`,
                     table,
                     credential
@@ -567,6 +564,7 @@ export class AzureDatalakeExt {
                 try {
 
                     await serviceClient.createTable(table);
+                    await emptyTable(tableClient, table);
 
                 } catch( err ) {
 
@@ -599,37 +597,56 @@ export class AzureDatalakeExt {
                     }
                 }
 
-                let numRowsInserted = 0;
+                
+                let numRowsProcessed = 0;
+                let transactions = [];
 
                 try {
-                    await this.map({
+                    await this.forEach({
                         url,
-                        mapper: async (row, i) => {
+                        fn: async (row, i) => {
+                            
                             let result;
+                            
                             try {
-                                row.PartitionKey = typeof partitionKey === 'function'
+                            
+                                row.partitionKey = typeof partitionKey === 'function'
                                     ? partitionKey(row)
                                     : row[partitionKey];
-                                row.RowKey = typeof rowKey === 'function'
+                            
+                                row.rowKey = typeof rowKey === 'function'
                                     ? rowKey(row)
-                                    :row[rowKey];
+                                    : row[rowKey];
+                            
                                 if(types && Object.keys(types).length)
                                     row = _castKeywordObject(row, types);
-                                result = await transactClient.createEntity(row)
-                                numRowsInserted++;
+
+                                if(row.partitionKey && row.rowKey)
+                                    transactions.push(['create', row]);
+                                else {
+                                    console.log('---')
+                                }
+                                numRowsProcessed++;
+
                             } catch( err ) {
+
                                 await serviceClient.deleteTable(table);
                                 return reject(Error(`Purged table ${table} - data extraction failed - an error has occured in the mapper function provided to SimpleDatalakeClient::ext.cache - ${err.message}`));
                             }
+
                         }
+
                     }, parserOptions);
                 }
                 catch( err ) {
                     reject(err);
                 }
 
+                const partitionedActions = partitionActionsStack(transactions);
+                await submitPartitionedActions(partitionedActions, tableClient);
+
                 return resolve({
-                    numRowsInserted
+                    numRowsInserted:transactions.length
                 });
 
             }
@@ -1046,4 +1063,166 @@ function _castKeywordObject( obj, definitions ) {
 
         return acc;
     }, {});
+}
+
+/**
+ * Convert a list of transaction actions to a binned structure useful for TableClient.submitTransaction. Each bin
+ * will be sorted into the transaction type (eg create, update etc) then the partitionKey as each action submitTransaction
+ * accepts must be the same type and of the same partition.
+ *  
+ * @param actions Array of Transaction Actions - eg ['create', {partitionkey:'a', rowKey:'a', data:1}]
+ * @param options Object a keyword options object 
+ * 
+ * @returns Object binned structure of { <transactionType> : { <partitionKey> : [ action, .. ] } } 
+ */
+function partitionActionsStack( actions ) {
+
+    try {
+
+        return actions.reduce((acc, txn) => {
+
+            const [action, data] = txn;
+
+            const {
+                partitionKey,
+                rowKey
+            } = data;
+
+            if(!partitionKey || !rowKey)
+                throw new Error(`invalid row - missing partition or row key`);
+
+            acc[action] = acc[action] || {};
+            acc[action][partitionKey] = acc[action][partitionKey] || [];
+            acc[action][partitionKey].push(txn);
+            return acc;
+
+        }, {});
+
+    }
+    catch( err ) {
+
+        throw new Error(`partitionActionsStack has failed - ${err.message}`);
+    }
+}
+
+/**
+ * Submit a set of actions which are binned appropriately (@see partitionActionsStack output) - that is;
+ * { <transactionType> : { <partitionKey> : [ action, .. ] } }
+ * 
+ * @param partitionedActions 
+ * @param tableClient
+ *  
+ * @returns boolean if all transactions were successfull
+ * @throws Error 
+ */
+async function submitPartitionedActions( partitionedActions, tableClient ) {
+
+    try {
+
+        const txns = [];
+
+        Object.keys(partitionedActions).forEach(action => {
+            Object.keys(partitionedActions[action]).forEach(partition => {
+                if(partitionedActions[action][partition].length)
+                    txns.push(partitionedActions[action][partition]);
+            });
+        })
+
+        try {
+
+            //txns.every(ktxn => allTxnsAreUnique(ktxn))
+            
+            for(var i=0; i < txns.length; i++) {
+                const actions = txns[i];
+                await tableClient.submitTransaction(actions);
+                setTimeout(() => {}, 100);
+            }
+
+            // when microsoft fix their stuff - use below:
+            // await Promise.all(txns.map(actions => tableClient.submitTransaction(actions)}));
+        }
+        catch( err ) {
+
+            throw new Error(`failed completing transactions - ${err.message}`);
+        }
+
+        return true;
+    }
+    catch( err ) {
+
+        throw new Error(`submitPartitionedActions has failed - ${err.message}`);
+    }
+
+
+
+}
+
+/**
+ * Ensures all the transactions are unique.
+ * 
+ * @param txns 
+ * 
+ * @returns boolean
+ * @throws Error - w/ a list of non-unique partitionKey/RowKey combinations 
+ */
+function allTxnsAreUnique( txns ) {
+
+    const keys = [];
+    const conflictedKeys = [];
+
+    const unique = txns.forEach(txn => {
+        const pk = [txn[1].partitionKey, txn[1].rowKey].join('|');
+        const found = keys.includes(pk);
+        if(found) {
+            conflictedKeys.push(pk);
+        }
+        keys.push(pk);
+    });
+
+    if(conflictedKeys.length)
+        throw new Error(`cannot perform transactions - attempting to create some entities twice (partitionKey|rowKey) ${conflictedKeys.join('\n')}`);
+
+    return true;
+}
+
+async function emptyTable(client, table) {
+
+    const result = await client.listEntities();
+    let spool = {}
+
+    for await (const entity of await client.listEntities()) {
+
+        if(!spool.hasOwnProperty(entity.partitionKey)){
+            spool[entity.partitionKey] = {currentBinIdx: 0, bins: [[]]};
+        }
+
+        let currentBinIdx = spool[entity.partitionKey].currentBinIdx;
+        if(spool[entity.partitionKey].bins[currentBinIdx].length > 99){
+            spool[entity.partitionKey].currentBinIdx++;
+            currentBinIdx = spool[entity.partitionKey].currentBinIdx;
+            spool[entity.partitionKey].bins.push([]);
+        }
+        spool[entity.partitionKey].bins[currentBinIdx].push(entity)
+
+    }
+
+    if(!Object.keys(spool).length)
+        return true;
+
+    const batchStack = Object.keys(spool).reduce((acc, pk) => {
+        const batches = spool[pk].bins.map(bin => {
+            const actions = [];
+            bin.forEach(entity => actions.push(['delete', entity]))
+            return actions;
+        });
+        acc = acc.concat(batches);
+        return acc;
+    }, []);
+
+    await Promise.all(batchStack);
+    for(let i=0; i<batchStack.length; i++) {
+        await client.submitTransaction(batchStack[i]);
+    }
+
+    return true;
 }
