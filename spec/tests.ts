@@ -846,13 +846,13 @@ describe(`Datalake client tests`, function() {
             })
         });
 
-        describe(`get`, () => {
+        describe.only(`get`, () => {
 
             it(`invokes get on a valid URL`, async () => {
 
                 const instance = new AzureDatalakeClient();
 
-                const url = "https://nusatradeadl.blob.core.windows.net/simulation-service/scenario-results/bnorris@enterrasolutions.com/e47095955bc849a79eb2d4a32584ffaf/COFFEE PARTNERS/input/reference_calendar.csv.gz"; //validURL;
+                const url = "https://nusatradeadl.blob.core.windows.net/simulation-service/scenario-results/SYSTEM/1ca34a07-fea3-4a92-8d53-c74cc90a295d/BAKING/input/reference_calendar.csv.gz"; //validURL;
 
                 const delimiter = "|";
                 const exists = await instance.exists({url});
