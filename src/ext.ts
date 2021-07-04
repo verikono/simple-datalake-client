@@ -19,7 +19,9 @@ import {
     CSVStreamToKeywordObjects,
     applyMutations,
     keywordArrayToCSV,
-    eachRow
+    eachRow,
+    inspect,
+    transformKeywordObjects
 } from './transforms';
 
 import {
@@ -28,7 +30,8 @@ import {
 } from './loaders';
 
 import {
-    nullTerminator
+    nullTerminator,
+    toAzureDataTables
 } from './terminators';
 
 export class AzureDatalakeExt {
@@ -875,6 +878,59 @@ export class AzureDatalakeExt {
 
             throw new Error(`SimpleDatalakeClient::ext.compiled has failed -  ${err.message}`)
         }
+    }
+z
+    etl( props:I.extEtlProps, parserOptions:I.ExtendedParserOptionsArgs={}  ):Promise<any> {
+
+        return new Promise(async (resolve, reject) => {
+
+            try {
+
+                const {
+                    url,
+                    transform,
+                    target,
+                    postFn
+                } = props;
+
+                let {
+                    overwrite,
+                    append
+                } = props;
+
+                overwrite = overwrite === undefined ? false : overwrite;
+                append = append === undefined ? false : append;
+
+                const parserOptions = props['parserOptions'] || {};
+                parserOptions.header = parserOptions.hasOwnProperty('key_values')
+                    ? parserOptions.key_values
+                    : true;
+
+                const promises = [];
+
+                const zipped = url.substr(-2) === 'gz';
+
+                try {
+
+                    pipeline(
+                        await fromAzureDatalake({url}),
+                        CSVStreamToKeywordObjects(),
+                        transformKeywordObjects({transformer: transform, initial: [], postFn}),
+                        toAzureDataTables({table: target, overwrite, append}),
+                        err => err ? reject(err): resolve(true)
+                    );
+                }
+                catch( err ) {
+                    return reject(err);
+                }
+
+            }
+            catch( err ) {
+
+                reject(new Error(`SimpleDatalakeClient::ext.etl has failed - ${err.message}`));
+            }
+        });
+
     }
 
     async modify( props:I.modifyFileProps, parserOptions:I.ExtendedParserOptionsArgs={} ):Promise<any> {

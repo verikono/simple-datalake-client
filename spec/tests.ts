@@ -846,7 +846,7 @@ describe(`Datalake client tests`, function() {
             })
         });
 
-        describe.only(`get`, () => {
+        describe(`get`, () => {
 
             it(`invokes get on a valid URL`, async () => {
 
@@ -1070,6 +1070,55 @@ describe(`Datalake client tests`, function() {
 
         });
 
+
+        describe.only(`etl`, async () => {
+
+            it(`develops`, async () => {
+
+                const instance = new AzureDatalakeClient();
+
+                const hashString = str => crypto.createHash('md5').update(str).digest('hex');
+                const supercategory = 'test';
+                
+                const result = await instance.ext.etl({
+                    url: 'https://nusatradeadl.blob.core.windows.net/simulation-service/scenario-results/bnorris@enterrasolutions.com/89b015ae-f8f1-40a2-8e44-fcdc32945f42/BAKING/input/scope.csv.gz',
+                    target: 'brentestetl',
+                    overwrite:true,
+                    transform: (acc, row) => {
+                        const hash = hashString(`${row.planning_account}scope`);
+                        let constraint = acc.find(row => row.uid === hash);
+
+                        if(!constraint) {
+                            constraint = {
+                                partitionKey: 'global',
+                                rowKey: hash,
+                                uid: hash,
+                                supercategory,
+                                planning_account: row.planning_account,
+                                constraint_type: 'scope',
+                                constraint_value: [],
+                                level: 'planning_account',
+                                level_id: row.planning_account,
+                                level_description: '',
+                                level_name: row.planning_account,
+                                hierarchy: []
+                            }
+                            acc.push(constraint)
+                        }
+
+                        constraint.constraint_value.push(row.group_name);
+                        return acc;
+                    },
+                    postFn: async data => {
+                        return data.map(constraint => {
+                            constraint.constraint_value = JSON.stringify(constraint.constraint_value);
+                            constraint.hierarchy = JSON.stringify(constraint.hierarchy);
+                            return constraint;
+                        });
+                    }
+                })
+            });
+        });
 
 
     });

@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.spool = exports.eachRow = exports.keywordObjectsToArray = exports.keywordArrayToCSV = exports.applyMutations = exports.CSVStreamToKeywordObjects = exports.inspect = void 0;
+exports.transformKeywordObjects = exports.spool = exports.eachRow = exports.keywordObjectsToArray = exports.keywordArrayToCSV = exports.applyMutations = exports.CSVStreamToKeywordObjects = exports.inspect = void 0;
 var Inspect_1 = require("./Inspect");
 Object.defineProperty(exports, "inspect", { enumerable: true, get: function () { return Inspect_1.inspect; } });
 var CSVStreamToKeywordObjects_1 = require("./CSVStreamToKeywordObjects");
@@ -15,4 +15,6 @@ var EachRow_1 = require("./EachRow");
 Object.defineProperty(exports, "eachRow", { enumerable: true, get: function () { return EachRow_1.eachRow; } });
 var Spool_1 = require("./Spool");
 Object.defineProperty(exports, "spool", { enumerable: true, get: function () { return Spool_1.spool; } });
+var TransformKeywordObjects_1 = require("./TransformKeywordObjects");
+Object.defineProperty(exports, "transformKeywordObjects", { enumerable: true, get: function () { return TransformKeywordObjects_1.transformKeywordObjects; } });
 //# sourceMappingURL=index.js.map

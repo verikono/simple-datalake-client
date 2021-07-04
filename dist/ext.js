@@ -655,6 +655,31 @@ class AzureDatalakeExt {
             throw new Error(`SimpleDatalakeClient::ext.compiled has failed -  ${err.message}`);
         }
     }
+    etl(props, parserOptions = {}) {
+        return new Promise((resolve, reject) => __awaiter(this, void 0, void 0, function* () {
+            try {
+                const { url, transform, target, postFn } = props;
+                let { overwrite, append } = props;
+                overwrite = overwrite === undefined ? false : overwrite;
+                append = append === undefined ? false : append;
+                const parserOptions = props['parserOptions'] || {};
+                parserOptions.header = parserOptions.hasOwnProperty('key_values')
+                    ? parserOptions.key_values
+                    : true;
+                const promises = [];
+                const zipped = url.substr(-2) === 'gz';
+                try {
+                    stream_1.pipeline(yield loaders_1.fromAzureDatalake({ url }), transforms_1.CSVStreamToKeywordObjects(), transforms_1.transformKeywordObjects({ transformer: transform, initial: [], postFn }), terminators_1.toAzureDataTables({ table: target, overwrite, append }), err => err ? reject(err) : resolve(true));
+                }
+                catch (err) {
+                    return reject(err);
+                }
+            }
+            catch (err) {
+                reject(new Error(`SimpleDatalakeClient::ext.etl has failed - ${err.message}`));
+            }
+        }));
+    }
     modify(props, parserOptions = {}) {
         return __awaiter(this, void 0, void 0, function* () {
             try {

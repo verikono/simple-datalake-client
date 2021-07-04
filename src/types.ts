@@ -127,6 +127,15 @@ export interface extCompileProps {
     pk: string|string[]|Function;
 }
 
+export interface extEtlProps {
+    url: string;
+    transform: Function;
+    postFn?:Function; // a function to treat the transformed result before pusing it down the pipeline.
+    target: string;
+    overwrite?: boolean;
+    append?: boolean;
+}
+
 export interface modifyFileProps {
     url: string;
     targetUrl?: string;
