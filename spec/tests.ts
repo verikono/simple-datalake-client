@@ -1072,7 +1072,7 @@ describe(`Datalake client tests`, function() {
 
         describe.only(`etl`, async () => {
 
-            it(`develops`, async () => {
+            it.skip(`develops`, async () => {
 
                 const instance = new AzureDatalakeClient();
 
@@ -1110,7 +1110,7 @@ describe(`Datalake client tests`, function() {
                     },
                     postFn: async data => {
                         return data.map(constraint => {
-                            constraint.constraint_value = typeof constraint.constraint_value !== 'string' ? JSON.stringify(constraint.constraint_value) : constraint.constraint_value;
+                            constraint.constraint_value = typeof constraint.constraint_value === 'string' ? JSON.stringify(constraint.constraint_value) : constraint.constraint_value;
                             constraint.hierarchy = typeof constraint.hierarchy ? JSON.stringify(constraint.hierarchy) : constraint.hierarchy;
                             return constraint;
                         });
@@ -1119,6 +1119,82 @@ describe(`Datalake client tests`, function() {
 
             });
 
+
+            it(`develops with more data`, async () => {
+
+
+                const PROMO_CONSTRAINTS = [
+                    'min_price',
+                    'min_discount',
+                    'max_discount',
+                    'price_points',
+                    'discount_levels',
+                    'min_retailer_margin_tpr',
+                    'min_retailer_margin_f',
+                    'min_retailer_margin_d',
+                    'min_retailer_margin_fd',
+                    'min_duration',
+                    'max_duration',
+                    'max_duration_event',
+                    'min_gap_event',
+                    'min_gap_block',
+                    'min_discount_feature',
+                    'min_discount_display',
+                    'min_discount_feature_display',
+                    'max_duration_block',
+                    'min_duration_block'
+                ];
+
+                const instance = new AzureDatalakeClient();
+
+                const hashString = str => crypto.createHash('md5').update(str).digest('hex');
+                const supercategory = 'test';
+                
+                const result = await instance.ext.etl({
+                    url: 'https://nusatradeadl.blob.core.windows.net/simulation-service/scenario-results/bnorris@enterrasolutions.com/89b015ae-f8f1-40a2-8e44-fcdc32945f42/BAKING/input/promo_group_constraints.csv.gz',
+                    target: 'brentestetl',
+                    overwrite:true,
+                    transform: (acc, row) => {
+                        try {
+
+                            PROMO_CONSTRAINTS.forEach(constraintType => {
+        
+                                const hash = hashString(`${row.planning_account}${row.group_name}${constraintType}`);
+                                let constraint = acc.find(row => row.uid === hash);
+        
+                                if(!constraint) {
+                                    constraint = {
+                                        partitionKey: 'global',
+                                        rowKey: hash,
+                                        uid: hash,
+                                        supercategory,
+                                        planning_account: row.planning_account,
+                                        constraint_type: constraintType,
+                                        constraint_value: row[constraintType],
+                                        level: 'group_name',
+                                        level_id: row.group_name,
+                                        level_description: row.group_description,
+                                        level_name: (row.group_name_name || row.group_name),
+                                        hierarchy: [row.planning_account, row.group_name]
+                                    }
+                                    acc.push(constraint)
+                                }
+                            });
+                            return acc;
+                        }
+                        catch( err ) {
+                            console.log('<<<<<<<<<<<<<<>>>>>>>')
+                        }
+                    },
+                    postFn: async data => {
+                        return data.map(constraint => {
+                            constraint.hierarchy = typeof constraint.hierarchy !== 'string' ? JSON.stringify(constraint.hierarchy) : constraint.hierarchy;
+                            return constraint;
+                        });
+                    }
+                });
+
+            })
         });
 
 

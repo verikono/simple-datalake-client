@@ -2,7 +2,6 @@ import {Writable} from 'stream';
 import {
     TableServiceClient,
     AzureNamedKeyCredential,
-    TableTransaction,
     TransactionAction,
     TableClient
 } from '@azure/data-tables';
@@ -55,7 +54,7 @@ export class TrmAzureDataTables extends Writable {
                 data = JSON.parse(chunk.toString());
             }
             catch( err ) {
-                throw new Error(`failed parsing data chunk - expected data to be a JSON described array of keyword objects`);
+                throw new Error(`failedconst transaction = new TableTransaction(); parsing data chunk - expected data to be a JSON described array of keyword objects`);
             }
 
             if(!Array.isArray(data) || !data.length || !Object.keys(data[0]).length)
@@ -82,9 +81,24 @@ export class TrmAzureDataTables extends Writable {
         new Promise( async (resolve, reject) => {
 
             try {
+
                 await this.createTableIfNotExists();
-                const txns:Array<TransactionAction> = this.result.map(itm => ['create', itm]);
-                await client.submitTransaction(txns);
+
+                const binFeed = this.result.slice();
+                const bins = [];
+
+                while(binFeed.length) {
+                    bins.push(binFeed.splice(0, 99));
+                }
+
+                const txnStart = new Date().getTime();
+                
+                for(var i=0; i<bins.length; i++) {
+                    const bin = bins[i];
+                    const txns:Array<TransactionAction> = bin.map(itm => ['create', itm]);
+                    await client.submitTransaction(txns);
+                }
+
                 resolve(true);
             }
             catch( err ) {

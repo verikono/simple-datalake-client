@@ -43,7 +43,7 @@ class TrmAzureDataTables extends stream_1.Writable {
                 data = JSON.parse(chunk.toString());
             }
             catch (err) {
-                throw new Error(`failed parsing data chunk - expected data to be a JSON described array of keyword objects`);
+                throw new Error(`failedconst transaction = new TableTransaction(); parsing data chunk - expected data to be a JSON described array of keyword objects`);
             }
             if (!Array.isArray(data) || !data.length || !Object.keys(data[0]).length)
                 throw new Error(`expected data to be a JSON described array of keyword objects`);
@@ -61,8 +61,17 @@ class TrmAzureDataTables extends stream_1.Writable {
         new Promise((resolve, reject) => __awaiter(this, void 0, void 0, function* () {
             try {
                 yield this.createTableIfNotExists();
-                const txns = this.result.map(itm => ['create', itm]);
-                yield client.submitTransaction(txns);
+                const binFeed = this.result.slice();
+                const bins = [];
+                while (binFeed.length) {
+                    bins.push(binFeed.splice(0, 99));
+                }
+                const txnStart = new Date().getTime();
+                for (var i = 0; i < bins.length; i++) {
+                    const bin = bins[i];
+                    const txns = bin.map(itm => ['create', itm]);
+                    yield client.submitTransaction(txns);
+                }
                 resolve(true);
             }
             catch (err) {
