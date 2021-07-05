@@ -707,7 +707,7 @@ describe(`Datalake client tests`, function() {
 
         });
 
-        describe(`cache`, () => {
+        describe.only(`cache`, () => {
 
             it(`Caches`, async () => {
 
@@ -719,7 +719,7 @@ describe(`Datalake client tests`, function() {
                     url: validReferenceCalenderURL,
                     table,
                     partitionKey: 'planning_account',
-                    rowKey: 'group_name',
+                    rowKey: ['group_name', 'duration', 'start_date', 'promo_tactic'],
                     replaceIfExists:true
                 });
 
@@ -766,12 +766,13 @@ describe(`Datalake client tests`, function() {
                 const {numRowsInserted} = result;
 
                 result = await tables.rows({table: tableName});
+                await tables.drop({table: tableName});
+
                 assert(result.length === numRowsInserted, 'failed');
                 assert(result.every(row => typeof row.bb_unit_rate === 'number'), 'failed');
                 assert(result.every(row => typeof row.cust_promo_id === 'string'), 'failed');
 
-                await tables.drop({table: tableName});
-
+                
             });
 
             it(`Errors appropriately`, () => {
@@ -780,9 +781,15 @@ describe(`Datalake client tests`, function() {
 
                 return new Promise( async (resolve, reject) => {
 
-                    instance.ext.cache({})
-                        .then(result => reject(Error(`Did not throw the expected error`)))
-                        .catch(err => resolve(true))
+                    instance.ext.cache({
+                        url: validReferenceCalenderURL,
+                        table: 'wontmatter',
+                        partitionKey: (v) => {throw new Error('do the error')},
+                        rowKey: ['group_name', 'duration', 'start_date', 'promo_tactic'],
+                        replaceIfExists:true
+                    })
+                    .then(result => reject(Error(`Did not throw the expected error`)))
+                    .catch(err => resolve(true))
                 });
 
             });
@@ -1070,7 +1077,7 @@ describe(`Datalake client tests`, function() {
 
         });
 
-        describe.only(`etl`, async () => {
+        describe(`etl`, async () => {
 
             it.skip(`develops`, async () => {
 
@@ -1196,7 +1203,6 @@ describe(`Datalake client tests`, function() {
 
             })
         });
-
 
     });
 

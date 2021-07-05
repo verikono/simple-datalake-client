@@ -127,6 +127,21 @@ export interface extCompileProps {
     pk: string|string[]|Function;
 }
 
+interface TypeCastDefinitionSet {
+    [key:string]: "float"|"string"|"boolean"
+}
+
+export interface extCacheProps {
+    url: string;
+    table: string;
+    partitionKey: string|string[]|Function;
+    rowKey: string|string[]|Function;
+    overwrite?: boolean;
+    append?: boolean;
+    types?: TypeCastDefinitionSet;
+    replaceIfExists?: boolean;
+}
+
 export interface extEtlProps {
     url: string;
     transform: Function;

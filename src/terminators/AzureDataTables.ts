@@ -84,15 +84,26 @@ export class TrmAzureDataTables extends Writable {
 
                 await this.createTableIfNotExists();
 
-                const binFeed = this.result.slice();
-                const bins = [];
+                const pkBins = this.result.reduce((acc, entity) => {
+                    const {partitionKey} = entity;
+                    if(!acc.hasOwnProperty(partitionKey))
+                        acc[partitionKey] = [];
+                    acc[partitionKey].push(entity);
+                    return acc;
+                }, {});
 
-                while(binFeed.length) {
-                    bins.push(binFeed.splice(0, 99));
-                }
+                let bins = [];
+                Object.keys(pkBins).forEach(partitionKey => {
+                    const binFeed = pkBins[partitionKey].slice();
+                    while(binFeed.length) {
+                        bins.push(binFeed.splice(0, 99));
+                    }        
+                })
 
                 const txnStart = new Date().getTime();
                 
+                this.allBinsUnique(bins);
+
                 for(var i=0; i<bins.length; i++) {
                     const bin = bins[i];
                     const txns:Array<TransactionAction> = bin.map(itm => ['create', itm]);
@@ -219,6 +230,18 @@ export class TrmAzureDataTables extends Writable {
 
             throw Error(`toAzureDataTables::emptyTableOfContents has failed - ${err.message}`);
         }
+    }
+
+    allBinsUnique( bins ) {
+        const chk = [];
+        bins.forEach((bin, binIdx) => {
+            bin.forEach((entity, entityIdx) => {
+                const key = `${entity.partitionKey}${entity.rowKey}`;
+                if(chk.includes(key))
+                    throw new Error(`a duplicate partition/row key combination was found for partitionKey:${entity.partitionKey}/rowKey:${entity.rowKey} in bin #${binIdx+1}`);
+                chk.push(key);
+            });
+        });
     }
 
     tableUrl() {

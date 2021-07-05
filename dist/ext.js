@@ -40,7 +40,6 @@ const parse_1 = require("@fast-csv/parse");
 const stream_1 = require("stream");
 const zlib = __importStar(require("zlib"));
 const os_1 = require("os");
-const data_tables_1 = require("@azure/data-tables");
 const transforms_1 = require("./transforms");
 const loaders_1 = require("./loaders");
 const terminators_1 = require("./terminators");
@@ -384,117 +383,6 @@ class AzureDatalakeExt {
         });
     }
     /**
-     * Cache a CSV file to a azure storage table.
-     *
-     * Temporary solution for a project i'm on that uses azure storage but will migrate to datalake tables, so we'll replace this very shortly.
-     * Due to the lack of AAD support with azure storage tables this is going to be a bit ugly so the faster we move to datalake tables the better.
-     *
-     * @param props the argument object
-     * @param props.url string the url of the datalake file
-     * @param props.table string the target tablename
-     * @param props.partitionKey string the field to use for a partiton key
-     * @param props.rowKey string the field to use for the row key
-     * @param props.replaceIfExists boolean replace the table if one exists (this suffers waiting around in the azure queue), default false
-     * @param props.types object a key value object where the key is the property name and the value is the Odata Edm type - eg { field_one: "double", field_two: "Int32" }
-     * @param parserOptions
-     * @todo allow paritionKey and rowKey to be argued as a function.
-     */
-    cache(props, parserOptions = {}) {
-        return new Promise((resolve, reject) => __awaiter(this, void 0, void 0, function* () {
-            try {
-                const { url, table, delimiter = ',', partitionKey, rowKey, types } = props;
-                let { replaceIfExists } = props;
-                replaceIfExists = replaceIfExists === undefined ? false : replaceIfExists;
-                const { AZURE_STORAGE_ACCOUNT, AZURE_STORAGE_ACCOUNT_KEY } = process.env;
-                if (!url)
-                    throw Error('argue a url.');
-                if (typeof AZURE_STORAGE_ACCOUNT !== "string" || !AZURE_STORAGE_ACCOUNT.length)
-                    throw Error(`simple_datalake_client::cache failed - missing environment variable STORAGE_ACCOUNT`);
-                if (typeof AZURE_STORAGE_ACCOUNT_KEY !== "string" || !AZURE_STORAGE_ACCOUNT_KEY.length)
-                    throw Error(`simple_datalake_client::cache failed - missing environment variable STORAGE_ACCOUNT_KEY`);
-                const credential = new data_tables_1.AzureNamedKeyCredential(AZURE_STORAGE_ACCOUNT, AZURE_STORAGE_ACCOUNT_KEY);
-                const serviceClient = new data_tables_1.TableServiceClient(`https://${AZURE_STORAGE_ACCOUNT}.table.core.windows.net`, credential);
-                const tableClient = new data_tables_1.TableClient(`https://${AZURE_STORAGE_ACCOUNT}.table.core.windows.net`, table, credential);
-                if (!(yield this.client.exists({ url })))
-                    throw new Error(`no file exists at ${url}`);
-                try {
-                    yield serviceClient.createTable(table);
-                    yield emptyTable(tableClient, table);
-                }
-                catch (err) {
-                    if (err.message.includes('TableBeingDeleted')) {
-                        console.warn(`table ${table} is queued for deletion by azure, retrying momentarily...`);
-                        yield new Promise(r => setTimeout(() => r(true), 2000));
-                        let result;
-                        try {
-                            result = yield this.cache(props, parserOptions);
-                        }
-                        catch (err) {
-                            return reject(err);
-                        }
-                        return resolve(result);
-                    }
-                    else if (err.message.includes('TableAlreadyExists') && replaceIfExists) {
-                        console.warn(`table ${table} exists - dropping by request.`);
-                        yield serviceClient.deleteTable(table);
-                        let result;
-                        try {
-                            result = yield this.cache(props, parserOptions);
-                        }
-                        catch (err) {
-                            return reject(err);
-                        }
-                        return resolve(result);
-                    }
-                    else {
-                        return reject(Error(`SimpleDatalakeClient:ext::cache failed to build target table ${table} using credentials [${AZURE_STORAGE_ACCOUNT}][${AZURE_STORAGE_ACCOUNT_KEY}] ${err.message}`));
-                    }
-                }
-                let numRowsProcessed = 0;
-                let transactions = [];
-                try {
-                    yield this.forEach({
-                        url,
-                        fn: (row, i) => __awaiter(this, void 0, void 0, function* () {
-                            let result;
-                            try {
-                                row.partitionKey = typeof partitionKey === 'function'
-                                    ? partitionKey(row)
-                                    : row[partitionKey];
-                                row.rowKey = typeof rowKey === 'function'
-                                    ? rowKey(row)
-                                    : row[rowKey];
-                                if (types && Object.keys(types).length)
-                                    row = _castKeywordObject(row, types);
-                                if (row.partitionKey && row.rowKey)
-                                    transactions.push(['create', row]);
-                                else {
-                                    console.log('---');
-                                }
-                                numRowsProcessed++;
-                            }
-                            catch (err) {
-                                yield serviceClient.deleteTable(table);
-                                return reject(Error(`Purged table ${table} - data extraction failed - an error has occured in the mapper function provided to SimpleDatalakeClient::ext.cache - ${err.message}`));
-                            }
-                        })
-                    }, parserOptions);
-                }
-                catch (err) {
-                    reject(err);
-                }
-                const partitionedActions = partitionActionsStack(transactions);
-                yield submitPartitionedActions(partitionedActions, tableClient);
-                return resolve({
-                    numRowsInserted: transactions.length
-                });
-            }
-            catch (err) {
-                reject(Error(`SimpleDatalakeClient::ext.cache has failed ${err.message}`));
-            }
-        }));
-    }
-    /**
      * Iterate through a list of URLs where each is expected to be;
      *  - a CSV (gzipped or otherwise)
      *  - the same data with differences (eg. a list of friends for each month)
@@ -680,6 +568,80 @@ class AzureDatalakeExt {
             }
         }));
     }
+    /**
+     * Cache a CSV file to a azure storage table.
+     *
+     * Temporary solution for a project i'm on that uses azure storage but will migrate to datalake tables, so we'll replace this very shortly.
+     * Due to the lack of AAD support with azure storage tables this is going to be a bit ugly so the faster we move to datalake tables the better.
+     *
+     * @param props the argument object
+     * @param props.url string the url of the datalake file
+     * @param props.table string the target tablename
+     * @param props.partitionKey string the field to use for a partiton key
+     * @param props.rowKey string the field to use for the row key
+     * @param props.replaceIfExists boolean replace the table if one exists (this suffers waiting around in the azure queue), default false
+     * @param props.types object a key value object where the key is the property name and the value is the Odata Edm type - eg { field_one: "double", field_two: "Int32" }
+     * @param parserOptions
+     * @todo allow paritionKey and rowKey to be argued as a function.
+     */
+    cache(props, parserOptions = {}) {
+        return new Promise((resolve, reject) => __awaiter(this, void 0, void 0, function* () {
+            try {
+                const { url, table, partitionKey, rowKey, types, replaceIfExists } = props;
+                let { overwrite, append } = props;
+                overwrite = overwrite === undefined ? false : overwrite;
+                append = append === undefined ? false : append;
+                if (replaceIfExists) {
+                    console.warn('deprecating ext.cache argument `replaceIfExists` - use `overwrite` instead');
+                    overwrite = true;
+                }
+                const parserOptions = props['parserOptions'] || {};
+                parserOptions.header = parserOptions.hasOwnProperty('key_values')
+                    ? parserOptions.key_values
+                    : true;
+                const applyKeyProps = (key, row) => {
+                    if (key !== 'partitionKey' && key !== 'rowKey')
+                        throw new Error(`Cannot apply key prop ${key} - it must be either partitionKey or rowKey`);
+                    if (props[key] === undefined && !row.hasOwnProperty(key))
+                        throw new Error(`data does not have a partitionKey - add one, or use the cache function's ${key} argument`);
+                    const keyVal = props[key];
+                    //argued partition/row key is an array.
+                    if (Array.isArray(keyVal))
+                        return keyVal.map(ukey => row[ukey]).join('');
+                    //argued partition/row key is a function.
+                    if (typeof keyVal === 'function')
+                        return keyVal(row);
+                    //argued partition/row must be a string.
+                    return row[keyVal];
+                };
+                let numRowsTransformed = 0;
+                try {
+                    stream_1.pipeline(yield loaders_1.fromAzureDatalake({ url }), transforms_1.CSVStreamToKeywordObjects(), transforms_1.transformKeywordObjects({
+                        transformer: (acc, row) => {
+                            row.partitionKey = applyKeyProps('partitionKey', row);
+                            row.rowKey = applyKeyProps('rowKey', row);
+                            if (types && Object.keys(types).length)
+                                row = _castKeywordObject(row, types);
+                            numRowsTransformed++;
+                            acc.push(row);
+                            return acc;
+                        },
+                        initial: []
+                    }), terminators_1.toAzureDataTables({ table, overwrite, append }), err => {
+                        if (err)
+                            return reject(err);
+                        resolve({ numRowsInserted: numRowsTransformed });
+                    });
+                }
+                catch (err) {
+                    return reject(err);
+                }
+            }
+            catch (err) {
+                reject(new Error(`SimpleDatalakeClient::ext.etl has failed - ${err.message}`));
+            }
+        }));
+    }
     modify(props, parserOptions = {}) {
         return __awaiter(this, void 0, void 0, function* () {
             try {
@@ -802,10 +764,7 @@ function _castKeywordObject(obj, definitions) {
                 }
                 break;
             case 'string':
-                acc[key] = {
-                    type: "String",
-                    value: obj[key].toString()
-                };
+                acc[key] = obj[key].toString();
                 break;
             case 'boolean':
                 value = obj[key] !== '0' && obj[key] !== 'false';
