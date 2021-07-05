@@ -7,7 +7,7 @@ class TxTransformKeywordObjects extends stream_1.Transform {
         super();
         this.transformer = props.transformer;
         this.postOp = props.postFn || null;
-        this.initialState = props.initialState || [];
+        this.accumulator = props.initialState || [];
     }
     _transform(chunk, encoding, callback) {
         try {
@@ -20,23 +20,27 @@ class TxTransformKeywordObjects extends stream_1.Transform {
             catch (err) {
                 throw new Error(`failed parsing chunked data.`);
             }
-            let result = data.reduce(this.transformer, this.initialState);
+            let result = data.reduce(this.transformer, this.accumulator);
             if (this.postOp)
                 result = this.postOp(result);
             if (result instanceof Promise) {
                 Promise.all([result]).then(arr => {
-                    this.push(JSON.stringify(arr[0]));
+                    this.accumulator = arr[0];
                     callback();
                 });
             }
             else {
-                this.push(JSON.stringify(result));
+                this.accumulator = result;
                 callback();
             }
         }
         catch (err) {
             callback(`TxTransformKeywordObject has failed - ${err.message}`);
         }
+    }
+    _final(callback) {
+        this.push(JSON.stringify(this.accumulator));
+        callback();
     }
 }
 exports.TxTransformKeywordObjects = TxTransformKeywordObjects;

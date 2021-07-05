@@ -3,6 +3,7 @@ import {
     TableServiceClient,
     AzureNamedKeyCredential,
     TableTransaction,
+    TransactionAction,
     TableClient
 } from '@azure/data-tables';
 
@@ -20,6 +21,10 @@ export class TrmAzureDataTables extends Writable {
     purgeIfExists: boolean;
     appendExistingData: boolean;
 
+    result: Array<any>;
+
+    objectMode: true;
+
     constructor( props ) {
 
         try {
@@ -32,6 +37,7 @@ export class TrmAzureDataTables extends Writable {
             this.purgeIfExists = props.overwrite === undefined ? false : props.overwrite;
             this.appendExistingData = props.append === undefined ? false : props.append;
             this.credential = this.getCredential();
+            this.result = [];
         }
         catch( err ) {
             throw new Error(`toAzureDataTables has failed to construct - ${err.message}`);
@@ -58,31 +64,39 @@ export class TrmAzureDataTables extends Writable {
             if(!data[0].hasOwnProperty('partitionKey'))
                 throw new Error(`data should have its partition and row keys set prior to this module`);
 
-            const client = this.client || new TableClient(this.tableUrl(), this.targetTable, this.credential);
+            this.result = this.result.concat(data);
 
-            new Promise( async (resolve, reject) => {
-
-                try {
-                    await this.createTableIfNotExists();
-                    const txns = data.map(itm => ['create', itm]);
-                    await client.submitTransaction(txns);
-                    resolve(true);
-                }
-                catch( err ) {
-                    return reject(err);
-                }
-            })
-            .then(result => {
-                callback();
-            })
-            .catch(err => {
-                callback(err);
-            })
+            callback();
 
         }
         catch( err ) {
+
             callback(new Error(`toAzureDataTables has failed - ${err.message}`));
         }
+    }
+
+    _final( callback ) {
+
+        const client = this.client || new TableClient(this.tableUrl(), this.targetTable, this.credential);
+
+        new Promise( async (resolve, reject) => {
+
+            try {
+                await this.createTableIfNotExists();
+                const txns:Array<TransactionAction> = this.result.map(itm => ['create', itm]);
+                await client.submitTransaction(txns);
+                resolve(true);
+            }
+            catch( err ) {
+                return reject(err);
+            }
+        })
+        .then(result => {
+            callback();
+        })
+        .catch(err => {
+            callback(err);
+        })
     }
 
     async createTableIfNotExists() {
@@ -199,10 +213,6 @@ export class TrmAzureDataTables extends Writable {
             throw new Error(`cannot resolve tableUrl - AZURE_STORAGE_ACCOUNT is not set.`);
 
         return `https://${this.AZURE_STORAGE_ACCOUNT}.table.core.windows.net`;
-    }
-
-    _final( callback ) {
-        callback();
     }
 
     getCredential():AzureNamedKeyCredential{

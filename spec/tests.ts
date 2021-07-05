@@ -1070,7 +1070,6 @@ describe(`Datalake client tests`, function() {
 
         });
 
-
         describe.only(`etl`, async () => {
 
             it(`develops`, async () => {
@@ -1111,13 +1110,15 @@ describe(`Datalake client tests`, function() {
                     },
                     postFn: async data => {
                         return data.map(constraint => {
-                            constraint.constraint_value = JSON.stringify(constraint.constraint_value);
-                            constraint.hierarchy = JSON.stringify(constraint.hierarchy);
+                            constraint.constraint_value = typeof constraint.constraint_value !== 'string' ? JSON.stringify(constraint.constraint_value) : constraint.constraint_value;
+                            constraint.hierarchy = typeof constraint.hierarchy ? JSON.stringify(constraint.hierarchy) : constraint.hierarchy;
                             return constraint;
                         });
                     }
-                })
+                });
+
             });
+
         });
 
 
