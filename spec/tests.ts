@@ -707,7 +707,7 @@ describe(`Datalake client tests`, function() {
 
         });
 
-        describe.only(`cache`, () => {
+        describe(`cache`, () => {
 
             it(`Caches`, async () => {
 
@@ -791,6 +791,38 @@ describe(`Datalake client tests`, function() {
                     .then(result => reject(Error(`Did not throw the expected error`)))
                     .catch(err => resolve(true))
                 });
+
+            });
+
+            it.only(`Callsback on recently deleted tables, taking longer but actually getting the job done`, async () => {
+
+                const table = 'cacheondroppedtables';
+                const instance = new AzureDatalakeClient();
+                const tables = new AzureDataTablesClient();
+
+                let result;
+                result = await instance.ext.cache({
+                    url: validReferenceCalenderURL,
+                    table,
+                    partitionKey: 'planning_account',
+                    rowKey: ['group_name', 'duration', 'start_date', 'promo_tactic'],
+                    replaceIfExists:true
+                });
+
+                await tables.drop({table});
+
+                //we expect this to take at least 30 seconds (so the library can await the operations queue)
+                result = await instance.ext.cache({
+                    url: validReferenceCalenderURL,
+                    table,
+                    partitionKey: 'planning_account',
+                    rowKey: ['group_name', 'duration', 'start_date', 'promo_tactic'],
+                    replaceIfExists:true
+                });
+
+                const exists = await tables.existsAndHasData({table});
+                assert(exists === true, 'failed');
+                await tables.drop({table});
 
             });
 

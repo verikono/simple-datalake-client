@@ -22,7 +22,8 @@ export class TrmAzureDataTables extends Writable {
 
     result: Array<any>;
 
-    objectMode: true;
+    objectMode: boolean;
+    retriedForOpsQueue: boolean;
 
     constructor( props ) {
 
@@ -36,6 +37,7 @@ export class TrmAzureDataTables extends Writable {
             this.purgeIfExists = props.overwrite === undefined ? false : props.overwrite;
             this.appendExistingData = props.append === undefined ? false : props.append;
             this.credential = this.getCredential();
+            this.retriedForOpsQueue = false;
             this.result = [];
         }
         catch( err ) {
@@ -76,11 +78,11 @@ export class TrmAzureDataTables extends Writable {
 
     _final( callback ) {
 
-        const client = this.client || new TableClient(this.tableUrl(), this.targetTable, this.credential);
-
         new Promise( async (resolve, reject) => {
 
             try {
+
+                const client = this.client || new TableClient(this.tableUrl(), this.targetTable, this.credential);
 
                 await this.createTableIfNotExists();
 
@@ -113,6 +115,24 @@ export class TrmAzureDataTables extends Writable {
                 resolve(true);
             }
             catch( err ) {
+
+                //this error can occur because the target table has freshly been deleted and is stuck in Azures operations queue; give in 30 seconds and go again.
+                if(err.code === 'TableNotFound') {
+                    
+                    if(!this.retriedForOpsQueue) {
+                        console.log(`toAzureDataTables recevied an error which it believes may be a freshly deleted table ${this.targetTable} - retrying in 30 seconds.`);
+                        this.retriedForOpsQueue = true;
+                        setTimeout(() => {
+                            try {
+                                this._final(callback)
+                            }
+                            catch( err ) {
+                                reject(err);
+                            }
+                        }, 30000);
+                        return;
+                    }
+                }
                 return reject(err);
             }
         })
@@ -126,33 +146,39 @@ export class TrmAzureDataTables extends Writable {
 
     async createTableIfNotExists() {
 
-        if(this.attemptedTableCreation)
-            return;
+        try {
+            if(this.attemptedTableCreation)
+                return;
 
-        const service = this.service || new TableServiceClient(this.tableUrl(), this.credential);
-        let tablesIter = service.listTables();
+            const service = this.service || new TableServiceClient(this.tableUrl(), this.credential);
+            let tablesIter = service.listTables();
 
-        //iterate through the tables
-        for await (const table of tablesIter) {
-            if(table.name === this.targetTable) {
-                //found!
-                if(this.purgeIfExists) {
-                    //we purge all data, and return - leaving us with an empty table
-                    await this.emptyTableOfContents();
-                    return;
-                }
-                else if(this.appendExistingData) {
-                    //we will be appending existing data
-                    return;
-                }
-                else {
-                    //error off, the table exists and the overwrite flag is false and we're not appending data.
-                    throw new Error(`Table ${this.targetTable} exists - either argue "overwrite":true if thats what you want.`)
+            //iterate through the tables
+            for await (const table of tablesIter) {
+                if(table.name === this.targetTable) {
+                    //found!
+                    if(this.purgeIfExists) {
+                        //we purge all data, and return - leaving us with an empty table
+                        await this.emptyTableOfContents();
+                        return;
+                    }
+                    else if(this.appendExistingData) {
+                        //we will be appending existing data
+                        return;
+                    }
+                    else {
+                        //error off, the table exists and the overwrite flag is false and we're not appending data.
+                        throw new Error(`Table ${this.targetTable} exists - either argue "overwrite":true if thats what you want.`)
+                    }
                 }
             }
+            //nothing found, create the table.
+            await service.createTable(this.targetTable);
         }
-        //nothing found, create the table.
-        await service.createTable(this.targetTable);
+        catch( err ) {
+
+            console.log(`toAzureDataTables.createTableIfExists has failed - ${err.message}`);
+        }
     }
 
     //used instead of deletion which will take 30seconds to queue at table deletion.
