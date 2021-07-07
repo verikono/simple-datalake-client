@@ -198,6 +198,43 @@ class AzureDatalakeClient {
             }
         });
     }
+    list(props) {
+        var e_1, _a;
+        return __awaiter(this, void 0, void 0, function* () {
+            try {
+                const { url } = props;
+                const parsedUrl = this._parseURL(url);
+                const files = [];
+                const fsclient = this.getFileSystemClient({ url: parsedUrl.filesystem });
+                try {
+                    for (var _b = __asyncValues(fsclient.listPaths({ recursive: true })), _c; _c = yield _b.next(), !_c.done;) {
+                        const path = _c.value;
+                        if (!path.isDirectory && path.name.includes(parsedUrl.file)) {
+                            //trim to filename relative to url
+                            const relativeSource = path.name.replace(parsedUrl.file, '');
+                            //listPaths also includes DELETED items(like really!?) without the option to exlude them..
+                            //this we need to make sure we are copying a file which is there according to the user.
+                            const sourceExists = yield this.exists({ url: parsedUrl.url + relativeSource });
+                            if (sourceExists) {
+                                files.push(parsedUrl.url + relativeSource);
+                            }
+                        }
+                    }
+                }
+                catch (e_1_1) { e_1 = { error: e_1_1 }; }
+                finally {
+                    try {
+                        if (_c && !_c.done && (_a = _b.return)) yield _a.call(_b);
+                    }
+                    finally { if (e_1) throw e_1.error; }
+                }
+                return files;
+            }
+            catch (err) {
+                throw new Error(`AzureDatalakeClient::list has failed - ${err.message}`);
+            }
+        });
+    }
     /**
      * Copy the contents at a URL to another URL
      *
@@ -210,7 +247,7 @@ class AzureDatalakeClient {
      * @returns Promise<boolean>
      */
     copy(props) {
-        var e_1, _a;
+        var e_2, _a;
         return __awaiter(this, void 0, void 0, function* () {
             try {
                 let { source, target } = props;
@@ -241,12 +278,12 @@ class AzureDatalakeClient {
                             }
                         }
                     }
-                    catch (e_1_1) { e_1 = { error: e_1_1 }; }
+                    catch (e_2_1) { e_2 = { error: e_2_1 }; }
                     finally {
                         try {
                             if (_c && !_c.done && (_a = _b.return)) yield _a.call(_b);
                         }
-                        finally { if (e_1) throw e_1.error; }
+                        finally { if (e_2) throw e_2.error; }
                     }
                     if (files.length) {
                         yield Promise.all(files.map(({ source, target }) => this.copy({ source, target })));

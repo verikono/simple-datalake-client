@@ -288,11 +288,9 @@ describe(`Datalake client tests`, function() {
             it(`Invokes get upon a valid URL`, async () => {
 
                 const instance = new AzureDatalakeClient();
-                const result = await instance.get({url: validURL});
-                assert(typeof result === 'string' && result.length > 1, 'failed');
+                const result = await instance.get({url: validURL_DIRECTORY});
             });
         });
-
 
         describe(`touch && delete (both because we create and delete, and test for both here.)`, () => {
 
@@ -350,6 +348,16 @@ describe(`Datalake client tests`, function() {
 
         describe(`delete`, () => {
 
+        });
+
+        describe(`list - list contents of a directory`, () => {
+
+            it(`It lists the contents of a known directory`, async () => {
+
+                const instance = new AzureDatalakeClient();
+                const result = await instance.list({url: validURL_DIRECTORY});
+                assert(Array.isArray(result) && result.length, `failed - received either no array or an empty array - are there files at ${validURL_DIRECTORY}?`)
+            });
         });
 
         describe.skip(`stream`, () => {
@@ -1108,7 +1116,7 @@ describe(`Datalake client tests`, function() {
             });
         });
 
-        describe.only(`addNewColumns`, async () => {
+        describe(`addNewColumns`, async () => {
 
             it(`adds new columns to an existing CSV datafile`, async () => {
 

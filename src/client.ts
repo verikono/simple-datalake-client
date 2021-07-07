@@ -225,6 +225,41 @@ export class AzureDatalakeClient {
         }
     }
 
+    async list( props ):Promise<string[]> {
+
+        try {
+
+            const {
+                url
+            } = props;
+
+            const parsedUrl = this._parseURL(url);
+            const files = [];
+            const fsclient = this.getFileSystemClient({url: parsedUrl.filesystem});
+
+            for await (const path of fsclient.listPaths({recursive: true})) {
+                if(!path.isDirectory && path.name.includes(parsedUrl.file)) {
+                    //trim to filename relative to url
+                    const relativeSource = path.name.replace(parsedUrl.file, '');
+
+                    //listPaths also includes DELETED items(like really!?) without the option to exlude them..
+                    //this we need to make sure we are copying a file which is there according to the user.
+                    const sourceExists = await this.exists({url:parsedUrl.url+relativeSource});
+
+                    if(sourceExists) {
+                        files.push(parsedUrl.url+relativeSource);
+                    }
+                }
+            }
+
+            return files;
+        }
+        catch( err ) {
+
+            throw new Error(`AzureDatalakeClient::list has failed - ${err.message}`);
+        }
+    }
+
     /**
      * Copy the contents at a URL to another URL
      * 
