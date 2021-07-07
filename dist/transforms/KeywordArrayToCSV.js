@@ -23,17 +23,20 @@ exports.keywordArrayToCSV = exports.TxKeywordArrayToCSV = void 0;
 const stream_1 = require("stream");
 const Papa = __importStar(require("papaparse"));
 class TxKeywordArrayToCSV extends stream_1.Transform {
-    constructor(options) {
+    constructor(options, parserOptions = {}) {
         super();
         this.firstChunk = true;
-        this.parseOptions = {};
+        this.options = {};
+        this.parserOptions = {};
         this.matches = [];
-        if (options.delimiter)
-            this.parseOptions['delimiter'] = options.delimiter;
+        this.options = options;
+        this.parserOptions = parserOptions;
     }
     _transform(chunk, encoding, callback) {
         try {
-            const parseOptions = Object.assign({}, this.parseOptions, { header: this.firstChunk });
+            if (this.options['delimiter'])
+                this.parserOptions['delimiter'] = this.options['delimiter'];
+            const parseOptions = Object.assign({}, this.parserOptions, { header: this.firstChunk });
             const csv = Papa.unparse(chunk.toString(), parseOptions);
             // const p = JSON.parse(chunk.toString());
             // p.forEach(obj => {

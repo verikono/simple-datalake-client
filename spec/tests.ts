@@ -794,7 +794,7 @@ describe(`Datalake client tests`, function() {
 
             });
 
-            it.only(`Callsback on recently deleted tables, taking longer but actually getting the job done`, async () => {
+            it(`Callsback on recently deleted tables, taking longer but actually getting the job done`, async () => {
 
                 const table = 'cacheondroppedtables';
                 const instance = new AzureDatalakeClient();
@@ -1106,12 +1106,45 @@ describe(`Datalake client tests`, function() {
                 //@ts-ignore - found can be true, typescript has an issue .
                 assert(found === true, 'failed');
             });
+        });
+
+        describe.only(`addNewColumns`, async () => {
+
+            it(`adds new columns to an existing CSV datafile`, async () => {
+
+                const url = 'https://nusatradeadl.blob.core.windows.net/dev/test/reference_calendar.csv.gz';
+                const testUrl = 'https://nusatradeadl.blob.core.windows.net/dev/test/reference_calendar_addcolstest.csv.gz';
+                const instance = new AzureDatalakeClient();
+
+                let result;
+
+                if(!(await instance.exists({url: testUrl}))) {
+                    result = await instance.copy({source:url, target:testUrl});
+                    assert(result === true, `failed - could not copy ${url} to ${testUrl}`)
+                }
+
+                result = await instance.ext.addNewColumns({
+                    url:testUrl,
+                    columns: {
+                        'modifications': '{}',
+                        'mo': 'adib'
+                    }
+                })
+
+                const data = await instance.ext.get({url: testUrl});
+                assert(data[0].hasOwnProperty('modifications') && data[0].modifications === '{}', 'failed could not find property modifications');
+                assert(data[0].hasOwnProperty('mo') && data[0].mo === 'adib', 'failed could not find property mo');
+
+                result = await instance.delete({url: testUrl});
+                assert(result === true, `failed - deletion of test data failed - please delete ${testUrl}`);
+
+            });
 
         });
 
         describe(`etl`, async () => {
 
-            it.skip(`develops`, async () => {
+            it(`develops`, async () => {
 
                 const instance = new AzureDatalakeClient();
 

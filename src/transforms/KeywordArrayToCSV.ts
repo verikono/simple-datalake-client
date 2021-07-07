@@ -1,5 +1,6 @@
 import { Transform } from 'stream';
 import * as Papa from 'papaparse';
+import { ToDfsEndpointHostMappings } from '@azure/storage-file-datalake';
 
 interface TxKeywordArrayToCSVProps {
     delimiter?:string;
@@ -8,21 +9,25 @@ interface TxKeywordArrayToCSVProps {
 export class TxKeywordArrayToCSV extends Transform {
 
     firstChunk=true;
-    parseOptions={};
+    options={};
+    parserOptions={};
     matches = [];
 
-    constructor( options:TxKeywordArrayToCSVProps ) {
+    constructor( options:TxKeywordArrayToCSVProps, parserOptions={} ) {
 
         super();
-        if(options.delimiter)
-            this.parseOptions['delimiter'] = options.delimiter;
+        this.options = options;
+        this.parserOptions = parserOptions;
     }
 
     _transform( chunk, encoding, callback ) {
 
         try {
 
-            const parseOptions = Object.assign({}, this.parseOptions, {header:this.firstChunk});
+            if(this.options['delimiter'])
+                this.parserOptions['delimiter'] = this.options['delimiter'];
+
+                const parseOptions = Object.assign({}, this.parserOptions, {header:this.firstChunk});
             const csv = Papa.unparse(chunk.toString(), parseOptions);
 
             // const p = JSON.parse(chunk.toString());

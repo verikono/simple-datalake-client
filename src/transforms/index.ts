@@ -8,3 +8,4 @@ export { keywordObjectsToArray } from './KeywordObjectsToArray';
 export { eachRow } from './EachRow';
 export { spool } from './Spool';
 export { transformKeywordObjects } from './TransformKeywordObjects';
+export { addColumns } from './AddColumns';

@@ -1,8 +1,11 @@
 import { Transform } from 'stream';
 import * as Papa from 'papaparse';
+import { isEmptyObject } from './util';
 
 interface CSVStreamToKeywordObjectsProps {
     dispatchRows?:boolean;
+    report?:any; //an empty object which can be used to gain information durying process. eg. the delimiter that wa used.
+    onFirstChunk?:Function
 }
 /**
  * Parse a CSV stream, consequent transforms being called for each row.
@@ -14,16 +17,36 @@ export class TxCSVStreamToKeywordObjects extends Transform {
 
     options;
     firstChunk=true;
+    onFirstChunk;
 
     delimiter;
     lineSplit;
     delimiterCount=0;
     headings;
     lastPartial;
+    report;
 
     constructor( options:CSVStreamToKeywordObjectsProps ) {
+
         super();
-        this.options = options;
+
+        try{
+
+            this.options = options;
+
+            if(options.report) {
+                if(!isEmptyObject(options.report))
+                    throw new Error(`constructor argument "report" should be an empty object for this transformer to populate with processing information`);
+                this.report = options.report;
+            }
+
+            if(options.onFirstChunk)
+                this.onFirstChunk = options.onFirstChunk
+        }
+        catch( err ) {
+
+            throw new Error(`TxCSVStreamToKeywordObjects has failed to construct - ${err.message}`);
+        }
     }
 
     _transform( chunk, encoding, callback ) {
@@ -39,6 +62,10 @@ export class TxCSVStreamToKeywordObjects extends Transform {
                 this.lineSplit = parse.meta.linebreak;
                 this.delimiterCount = parse.data[0].length;
                 this.firstChunk = false;
+                if(this.report)
+                    this.report.parse = parse.meta;
+                if(this.onFirstChunk)
+                    this.onFirstChunk(parse.meta)
             }
             else {
                 lines[0] = this.lastPartial+lines[0];

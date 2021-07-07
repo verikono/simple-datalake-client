@@ -670,6 +670,41 @@ class AzureDatalakeExt {
             }
         });
     }
+    addNewColumns(props, parserOptions = {}) {
+        return __awaiter(this, void 0, void 0, function* () {
+            return new Promise((resolve, reject) => __awaiter(this, void 0, void 0, function* () {
+                try {
+                    const { url, columns } = props;
+                    const parserOptions = props['parserOptions'] || {};
+                    parserOptions.header = parserOptions.hasOwnProperty('key_values')
+                        ? parserOptions.key_values
+                        : true;
+                    let numRowsTransformed = 0;
+                    const keywordArrayToCSVProps = {
+                        delimiter: null
+                    };
+                    const onFirstChunk = meta => {
+                        keywordArrayToCSVProps.delimiter = meta.delimiter;
+                    };
+                    try {
+                        stream_1.pipeline(yield loaders_1.fromAzureDatalake({ url }), transforms_1.CSVStreamToKeywordObjects({ onFirstChunk }), transforms_1.addColumns({
+                            columns
+                        }), transforms_1.keywordArrayToCSV(keywordArrayToCSVProps), yield loaders_1.toAzureDatalake({ url, replace: true }), err => {
+                            if (err)
+                                return reject(err);
+                            resolve(true);
+                        });
+                    }
+                    catch (err) {
+                        return reject(err);
+                    }
+                }
+                catch (err) {
+                    reject(new Error(`SimpleDatalakeClient::ext.etl has failed - ${err.message}`));
+                }
+            }));
+        });
+    }
     derivePk(pk, keyed_row) {
         switch (typeof pk) {
             case 'string':

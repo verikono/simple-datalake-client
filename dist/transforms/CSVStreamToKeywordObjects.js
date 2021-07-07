@@ -22,6 +22,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.CSVStreamToKeywordObjects = exports.TxCSVStreamToKeywordObjects = void 0;
 const stream_1 = require("stream");
 const Papa = __importStar(require("papaparse"));
+const util_1 = require("./util");
 /**
  * Parse a CSV stream, consequent transforms being called for each row.
  *
@@ -33,7 +34,19 @@ class TxCSVStreamToKeywordObjects extends stream_1.Transform {
         super();
         this.firstChunk = true;
         this.delimiterCount = 0;
-        this.options = options;
+        try {
+            this.options = options;
+            if (options.report) {
+                if (!util_1.isEmptyObject(options.report))
+                    throw new Error(`constructor argument "report" should be an empty object for this transformer to populate with processing information`);
+                this.report = options.report;
+            }
+            if (options.onFirstChunk)
+                this.onFirstChunk = options.onFirstChunk;
+        }
+        catch (err) {
+            throw new Error(`TxCSVStreamToKeywordObjects has failed to construct - ${err.message}`);
+        }
     }
     _transform(chunk, encoding, callback) {
         try {
@@ -45,6 +58,10 @@ class TxCSVStreamToKeywordObjects extends stream_1.Transform {
                 this.lineSplit = parse.meta.linebreak;
                 this.delimiterCount = parse.data[0].length;
                 this.firstChunk = false;
+                if (this.report)
+                    this.report.parse = parse.meta;
+                if (this.onFirstChunk)
+                    this.onFirstChunk(parse.meta);
             }
             else {
                 lines[0] = this.lastPartial + lines[0];

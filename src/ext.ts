@@ -21,7 +21,8 @@ import {
     keywordArrayToCSV,
     eachRow,
     inspect,
-    transformKeywordObjects
+    transformKeywordObjects,
+    addColumns
 } from './transforms';
 
 import {
@@ -936,6 +937,64 @@ z
 
             throw new Error(`SimpleDatalakeClient::ext.modify has failed - ${err.message}`);
         }
+    }
+
+    async addNewColumns( props, parserOptions:I.ExtendedParserOptionsArgs={} ):Promise<boolean> {
+
+        return new Promise(async (resolve, reject) => {
+
+            try {
+
+                const {
+                    url,
+                    columns
+                } = props;
+
+                const parserOptions = props['parserOptions'] || {};
+                parserOptions.header = parserOptions.hasOwnProperty('key_values')
+                    ? parserOptions.key_values
+                    : true;
+
+                let numRowsTransformed = 0;
+
+                const keywordArrayToCSVProps = {
+                    delimiter: null
+                };
+
+                const onFirstChunk = meta => {
+                    keywordArrayToCSVProps.delimiter = meta.delimiter;
+                };
+
+                try {
+
+                    pipeline(
+                        await fromAzureDatalake({url}),
+                        CSVStreamToKeywordObjects({onFirstChunk}),
+                        addColumns({
+                            columns
+                        }),
+                        keywordArrayToCSV(keywordArrayToCSVProps),
+                        await toAzureDatalake({url, replace:true}),
+                        
+                        err => {
+                            if(err)
+                                return reject(err);
+                            
+                            resolve(true);
+                        }
+                    );
+                }
+                catch( err ) {
+                    return reject(err);
+                }
+
+            }
+            catch( err ) {
+
+                reject(new Error(`SimpleDatalakeClient::ext.etl has failed - ${err.message}`));
+            }
+        });
+
     }
 
     derivePk( pk , keyed_row ):string {
