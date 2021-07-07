@@ -920,7 +920,7 @@ z
                         modifications,
                         report
                     }),
-                    keywordArrayToCSV({delimiter}),
+                    keywordArrayToCSV({parserOptions:{delimiter}}),
                     await toAzureDatalake({url, replace:true}),
                     err => {
                         if(err)
@@ -957,12 +957,18 @@ z
 
                 let numRowsTransformed = 0;
 
-                const keywordArrayToCSVProps = {
-                    delimiter: null
+                const detectedParserOptions = {
+                    delimiter: null,
+                    linebreak: null
+                };
+
+                const csvParserOptions = {
+                    linebreak: null
                 };
 
                 const onFirstChunk = meta => {
-                    keywordArrayToCSVProps.delimiter = meta.delimiter;
+                    detectedParserOptions.delimiter = meta.delimiter;
+                    detectedParserOptions.linebreak = meta.linebreak;
                 };
 
                 try {
@@ -973,9 +979,8 @@ z
                         addColumns({
                             columns
                         }),
-                        keywordArrayToCSV(keywordArrayToCSVProps),
-                        await toAzureDatalake({url, replace:true}),
-                        
+                        keywordArrayToCSV({parserOptions:detectedParserOptions}),
+                        await toAzureDatalake({url, replace:true, parserOptions: detectedParserOptions}),
                         err => {
                             if(err)
                                 return reject(err);

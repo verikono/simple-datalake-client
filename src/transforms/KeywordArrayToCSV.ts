@@ -2,8 +2,13 @@ import { Transform } from 'stream';
 import * as Papa from 'papaparse';
 import { ToDfsEndpointHostMappings } from '@azure/storage-file-datalake';
 
-interface TxKeywordArrayToCSVProps {
+interface parserOptions {
     delimiter?:string;
+    linebreak?:string;
+}
+
+interface TxKeywordArrayToCSVProps {
+    parserOptions?:any;
 }
 
 export class TxKeywordArrayToCSV extends Transform {
@@ -13,32 +18,19 @@ export class TxKeywordArrayToCSV extends Transform {
     parserOptions={};
     matches = [];
 
-    constructor( options:TxKeywordArrayToCSVProps, parserOptions={} ) {
+    constructor( options:TxKeywordArrayToCSVProps ) {
 
         super();
         this.options = options;
-        this.parserOptions = parserOptions;
+        this.parserOptions = options.hasOwnProperty('parserOptions') ? options.parserOptions : {};
     }
 
     _transform( chunk, encoding, callback ) {
 
         try {
 
-            if(this.options['delimiter'])
-                this.parserOptions['delimiter'] = this.options['delimiter'];
-
-                const parseOptions = Object.assign({}, this.parserOptions, {header:this.firstChunk});
+            const parseOptions = Object.assign({}, this.parserOptions, {header:this.firstChunk});
             const csv = Papa.unparse(chunk.toString(), parseOptions);
-
-            // const p = JSON.parse(chunk.toString());
-            // p.forEach(obj => {
-            //     const conflict = this.matches.find(m => m === obj.promo_id)
-            //     if(conflict) {
-            //         console.log('#######');
-            //     }
-            //     this.matches.push(obj.promo_id);
-            // })
-            // console.log('chunk');
             this.push(csv);
             this.firstChunk=false;
             callback();

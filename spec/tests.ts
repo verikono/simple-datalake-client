@@ -1118,7 +1118,7 @@ describe(`Datalake client tests`, function() {
 
         describe(`addNewColumns`, async () => {
 
-            it(`adds new columns to an existing CSV datafile`, async () => {
+            it.only(`adds new columns to an existing CSV datafile`, async () => {
 
                 const url = 'https://nusatradeadl.blob.core.windows.net/dev/test/reference_calendar.csv.gz';
                 const testUrl = 'https://nusatradeadl.blob.core.windows.net/dev/test/reference_calendar_addcolstest.csv.gz';
@@ -1340,7 +1340,7 @@ describe(`Datalake client tests`, function() {
                                 }
                             ]
                         }),
-                        await keywordArrayToCSV({delimiter:'|'}),
+                        await keywordArrayToCSV({parserOptions:{delimiter:'|'}}),
                         await toAzureDatalake({url: 'https://nusatradeadl.blob.core.windows.net/dev/test/out_test.csv.gz'}),
                         err => {
                             if(err) {

@@ -39,7 +39,7 @@ export async function fromAzureDatalake( options ) {
     return stream;
 }
 
-interface toAzureDataLakeOptions{ url: string; replace?: boolean }
+interface toAzureDataLakeOptions{ url: string; replace?: boolean, parserOptions?:any }
 export async function toAzureDatalake( options:toAzureDataLakeOptions ) {
 
     const {
@@ -56,12 +56,17 @@ export async function toAzureDatalake( options:toAzureDataLakeOptions ) {
         chunks = [];
         content = '';
         okToReplace = false;
+        parserOptions = {
+            linebreak:null
+        };
 
         constructor( options:toAzureDataLakeOptions ) {
 
             super();
             this.url = options.url;
             this.okToReplace = options.replace === undefined ? false : options.replace;
+            if(options.parserOptions)
+                this.parserOptions = options.parserOptions;
         }
 
         async connect() {
@@ -107,7 +112,7 @@ export async function toAzureDatalake( options:toAzureDataLakeOptions ) {
 
             try {
 
-                const content = this.chunks.join('\n\r');
+                const content = this.chunks.join(this.parserOptions.linebreak || '\n\r');
                 const zipped = this.url.substr(-2) === 'gz';
 
                 if(zipped) {
