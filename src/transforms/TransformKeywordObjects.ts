@@ -46,7 +46,7 @@ export class TxTransformKeywordObjects extends Transform {
 
         }
         catch( err ) {
-            callback(`TxTransformKeywordObject has failed - ${err.message}`);
+            callback(new Error(`TxTransformKeywordObject has failed - ${err.message}`));
         }
     }
 

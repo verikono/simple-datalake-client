@@ -35,7 +35,7 @@ class TxTransformKeywordObjects extends stream_1.Transform {
             }
         }
         catch (err) {
-            callback(`TxTransformKeywordObject has failed - ${err.message}`);
+            callback(new Error(`TxTransformKeywordObject has failed - ${err.message}`));
         }
     }
     _final(callback) {

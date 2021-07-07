@@ -25,7 +25,7 @@ function csvReport(options = {}) {
                     callback();
                 }
                 catch (err) {
-                    callback(`WrCSVReport has failed - ${err.message}`);
+                    callback(new Error(`WrCSVReport has failed - ${err.message}`));
                 }
             }
             _final(callback) {

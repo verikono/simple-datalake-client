@@ -17,7 +17,7 @@ export async function csvReport( options:csvReportProps={} ) {
                 callback();    
             }
             catch( err ) {
-                callback(`WrCSVReport has failed - ${err.message}`);
+                callback(new Error(`WrCSVReport has failed - ${err.message}`));
             }
         }
 
