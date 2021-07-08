@@ -1358,6 +1358,9 @@ describe(`Datalake client tests`, function() {
             });
         });
         
+        describe(`Loader.toAzureDataTables`, async () => {
+
+        });
 
     });
 
