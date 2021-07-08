@@ -1,10 +1,11 @@
-import {Writable} from 'stream';
+import { Writable } from 'stream';
 import {
     TableServiceClient,
     AzureNamedKeyCredential,
     TransactionAction,
     TableClient
 } from '@azure/data-tables';
+import { logger } from '../logger';
 
 export class TrmAzureDataTables extends Writable {
 
@@ -150,7 +151,10 @@ export class TrmAzureDataTables extends Writable {
             if(this.attemptedTableCreation)
                 return;
 
+            logger.info(`AzureDataLakeClient::toAzureDataTables - creating table ${this.targetTable}`);
             const service = this.service || new TableServiceClient(this.tableUrl(), this.credential);
+            logger.info(`AzureDataLakeClient::toAzureDataTables - gained credentials`);
+
             let tablesIter = service.listTables();
 
             //iterate through the tables
@@ -233,22 +237,6 @@ export class TrmAzureDataTables extends Writable {
                 throw new Error(`Failed emptying table ${this.targetTable} - ${err.message}`);
             }
 
-            //the below method replaces the block above and should work however it appears there's
-            //issues with azure tables when it comes to processing a lot of transactions simultaneously.
-            //boo! :(
-            // const promises = Object.keys(spool).map(partitionKey => {
-            //     return Promise.all(spool[partitionKey].bins.map(async set => {
-            //         try {
-            //             return await client.submitTransaction(set);
-            //         }
-            //         catch( err ) {
-            //             console.log('#################33');
-            //         }
-            //     }));
-            // });
-
-            //await Promise.all(promises);
-
             return true;
 
         }
@@ -289,6 +277,7 @@ export class TrmAzureDataTables extends Writable {
         this.AZURE_STORAGE_ACCOUNT = ASA;
         this.AZURE_STORAGE_ACCOUNT_KEY = ASAK;
 
+        logger.info(`toAzureDataTables accessing azure storage tables with credentials - ${ASA} / ${ASAK}`);
         this.credential = new AzureNamedKeyCredential(ASA, ASAK);
         return this.credential;
     }

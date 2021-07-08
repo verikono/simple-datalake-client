@@ -38,7 +38,8 @@ import {
     keywordObjectsToArray,
     keywordArrayToCSV,
     applyMutations,
-    inspect
+    inspect,
+    applyAzureKeys
 } from '../src/transforms';
 
 import {
@@ -54,6 +55,7 @@ import {
 import * as crypto from 'crypto';
 
 import * as zlib from 'zlib';
+import { toAzureDataTables } from '../src/terminators';
 
 describe(`Datalake client tests`, function() {
 
@@ -1359,6 +1361,33 @@ describe(`Datalake client tests`, function() {
         });
         
         describe(`Loader.toAzureDataTables`, async () => {
+
+            it.only(`loads some data to the tables`, async () => {
+
+                let errored;
+                const table = 'toAzureDataTablesTest';
+
+                const resolved = await new Promise(async (resolve, reject) => {
+
+                    pipeline(
+                        await fromAzureDatalake({url: 'https://nusatradeadl.blob.core.windows.net/dev/test/reference_calendar_small.csv'}),
+                        CSVStreamToKeywordObjects(),
+                        applyAzureKeys({partitionKey: 'planning_account', rowKey: ['planning_account', 'group_name', 'start_date', 'promo_tactic']}),
+                        await toAzureDataTables({table, overwrite:true}),
+                        err => {
+                            if(err) {
+                                errored = true;
+                                return reject(err);
+                            }
+                            else
+                                resolve(true);
+                        }
+                    )
+                });
+
+                assert(resolved === true && errored === undefined, 'failed');
+
+            });
 
         });
 

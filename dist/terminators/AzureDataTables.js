@@ -19,6 +19,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.toAzureDataTables = exports.TrmAzureDataTables = void 0;
 const stream_1 = require("stream");
 const data_tables_1 = require("@azure/data-tables");
+const logger_1 = require("../logger");
 class TrmAzureDataTables extends stream_1.Writable {
     constructor(props) {
         try {
@@ -118,7 +119,9 @@ class TrmAzureDataTables extends stream_1.Writable {
             try {
                 if (this.attemptedTableCreation)
                     return;
+                logger_1.logger.info(`AzureDataLakeClient::toAzureDataTables - creating table ${this.targetTable}`);
                 const service = this.service || new data_tables_1.TableServiceClient(this.tableUrl(), this.credential);
+                logger_1.logger.info(`AzureDataLakeClient::toAzureDataTables - gained credentials`);
                 let tablesIter = service.listTables();
                 try {
                     //iterate through the tables
@@ -207,20 +210,6 @@ class TrmAzureDataTables extends stream_1.Writable {
                 catch (err) {
                     throw new Error(`Failed emptying table ${this.targetTable} - ${err.message}`);
                 }
-                //the below method replaces the block above and should work however it appears there's
-                //issues with azure tables when it comes to processing a lot of transactions simultaneously.
-                //boo! :(
-                // const promises = Object.keys(spool).map(partitionKey => {
-                //     return Promise.all(spool[partitionKey].bins.map(async set => {
-                //         try {
-                //             return await client.submitTransaction(set);
-                //         }
-                //         catch( err ) {
-                //             console.log('#################33');
-                //         }
-                //     }));
-                // });
-                //await Promise.all(promises);
                 return true;
             }
             catch (err) {
@@ -251,6 +240,7 @@ class TrmAzureDataTables extends stream_1.Writable {
             throw new Error(`Failed gaining azure credentials - either argue toAzureDataTables with a AZURE_STORAGE_ACCOUNT and AZURE_STORAGE_ACCOUNT_KEY or set these as environment variables.`);
         this.AZURE_STORAGE_ACCOUNT = ASA;
         this.AZURE_STORAGE_ACCOUNT_KEY = ASAK;
+        logger_1.logger.info(`toAzureDataTables accessing azure storage tables with credentials - ${ASA} / ${ASAK}`);
         this.credential = new data_tables_1.AzureNamedKeyCredential(ASA, ASAK);
         return this.credential;
     }

@@ -49,7 +49,7 @@ export class TxApplyMutations extends Transform {
             case 'object':
                 if(!Array.isArray(this.pk))
                     throw Error(`unable to use argued pk - expected string|string[]|Function - got ${typeof this.pk}`);
-                return this.pk.reduce((acc, key) => acc.concat(keyed_row['pk']), '');
+                return this.pk.reduce((acc, key) => acc.concat(keyed_row[key]), '');
 
             case 'function':
                 try {

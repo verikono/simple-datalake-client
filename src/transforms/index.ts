@@ -9,3 +9,4 @@ export { eachRow } from './EachRow';
 export { spool } from './Spool';
 export { transformKeywordObjects } from './TransformKeywordObjects';
 export { addColumns } from './AddColumns';
+export { applyAzureKeys } from './SetAzureKeys';
